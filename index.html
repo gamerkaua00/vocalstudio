@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="theme-color" content="#000000">
+    <meta name="description" content="Editor de áudio vocal simples via web">
     <title>VocalStudio V1</title>
     
     <!-- Motor de Áudio -->
@@ -42,6 +43,7 @@
             border-bottom: 1px solid #222;
             display: flex; justify-content: center; align-items: center;
             z-index: 10;
+            flex-shrink: 0;
         }
         .logo { font-weight: 900; font-size: 1.2rem; letter-spacing: 1px; }
         .logo span { color: var(--primary); }
@@ -76,10 +78,10 @@
             font-weight: 900; font-size: 1rem; cursor: pointer;
             display: flex; align-items: center; justify-content: center; gap: 10px;
             box-shadow: 0 4px 15px rgba(0, 230, 118, 0.2);
+            transition: transform 0.1s;
         }
         .btn-add-music:active { transform: scale(0.98); }
         
-        /* Input Invisível para funcionar click */
         input[type="file"] { display: none; }
 
         .lib-list { display: flex; flex-direction: column; gap: 12px; }
@@ -87,6 +89,7 @@
         .music-item {
             background: var(--card); border-radius: 12px; padding: 15px;
             border: 1px solid #222; display: flex; flex-direction: column; gap: 12px;
+            transition: background 0.2s;
         }
         .music-item.active-track { border-color: var(--primary); background: #181818; }
 
@@ -105,9 +108,10 @@
             background: #222; color: white; font-size: 1rem; cursor: pointer;
             display: flex; align-items: center; justify-content: center;
         }
+        .act-btn:hover { background: #333; }
         .btn-play { color: var(--primary); }
         .btn-edit { background: var(--accent); color: white; border:none; }
-        .btn-share { color: #25D366; } /* WhatsApp Color */
+        .btn-share { color: #25D366; }
         .btn-rename { color: #ffab00; }
         .btn-del { color: var(--danger); }
 
@@ -116,6 +120,7 @@
             background: var(--card); padding: 20px; border-radius: 16px; border: 1px solid #333;
             text-align: center; margin-bottom: 25px;
         }
+        .studio-header { text-align: center; margin-bottom: 25px; }
         .track-title-large { font-size: 1.1rem; font-weight: bold; color: var(--primary); display: block; margin-bottom: 5px; }
         .track-status { font-size: 0.75rem; color: #666; }
 
@@ -170,13 +175,11 @@
         #toast {
             visibility: hidden; min-width: 200px; background: #222; color: #fff; text-align: center;
             border-radius: 50px; padding: 12px; position: fixed; z-index: 5000; left: 50%; bottom: 100px;
-            transform: translateX(-50%); border: 1px solid #444;
+            transform: translateX(-50%); border: 1px solid #444; box-shadow: 0 4px 10px rgba(0,0,0,0.5);
         }
         #toast.show { visibility: visible; animation: fadein 0.5s, fadeout 0.5s 2.5s; }
         @keyframes fadein { from {bottom: 50px; opacity: 0;} to {bottom: 100px; opacity: 1;} }
         @keyframes fadeout { from {bottom: 100px; opacity: 1;} to {bottom: 50px; opacity: 0;} }
-
-        #previewAudio { display: none; }
     </style>
 </head>
 <body>
@@ -206,8 +209,8 @@
     </div>
 
     <header>
-        <div class="logo">VOCAL<span>STUDIO</span> <span style="font-size:0.6rem; color:#666; border:1px solid #333; padding:2px 4px; border-radius:4px;">V1</span></div>
-        <div id="dbStatus" style="font-size:0.7rem; color:#444;">Init...</div>
+        <div class="logo">VOCAL<span>STUDIO</span> <span style="font-size:0.6rem; color:#666; border:1px solid #333; padding:2px 4px; border-radius:4px;">GITHUB</span></div>
+        <div id="dbStatus" style="font-size:0.7rem; color:#444; margin-left: 10px;">Init...</div>
     </header>
 
     <div class="tabs">
@@ -218,13 +221,12 @@
     <!-- TELA 1: BIBLIOTECA -->
     <div id="screen-library" class="screen active">
         <div class="import-box">
-            <button class="btn-add-music" onclick="document.getElementById('fileInput').click()">
+            <button class="btn-add-music" onclick="triggerImport()">
                 <i class="fas fa-plus-circle"></i> ADICIONAR MÚSICAS
             </button>
             <div style="font-size:0.7rem; color:#666; margin-top:10px;">
-                Selecione múltiplos arquivos ou pastas.
+                Selecione arquivos de áudio (MP3, WAV, AAC).
             </div>
-            <!-- Input aceita múltiplos -->
             <input type="file" id="fileInput" accept="audio/*" multiple onchange="handleImport(this.files)">
         </div>
 
@@ -234,8 +236,8 @@
     <!-- TELA 2: ESTÚDIO -->
     <div id="screen-studio" class="screen">
         <div class="studio-header">
-            <span class="track-title-large" id="studioName">Selecione na Biblioteca</span>
-            <span class="track-status" id="studioStatus">Motor desligado.</span>
+            <span class="track-title-large" id="studioName">Nenhuma faixa</span>
+            <span class="track-status" id="studioStatus">Selecione uma música na biblioteca</span>
         </div>
 
         <div class="tone-grid">
@@ -257,9 +259,8 @@
         <button class="p-btn btn-main-save" id="btnSave" onclick="openSaveModal()"><i class="fas fa-share-alt"></i> ENVIAR</button>
     </div>
 
-    <div id="loader" class="overlay"><div class="spinner"></div><div style="margin-top:15px; color:#888">Processando...</div></div>
+    <div id="loader" class="overlay"><div class="spinner"></div><div style="margin-top:15px; color:#888" id="loaderText">Processando...</div></div>
     <div id="toast">Aviso</div>
-    <audio id="previewAudio"></audio>
 
     <script>
         // --- 1. BANCO DE DADOS (PERSISTÊNCIA) ---
@@ -286,56 +287,81 @@
                 };
                 req.onerror = () => { 
                     document.getElementById('dbStatus').innerText = "DB Error"; 
-                    resolve(); // Não trava, mas avisa
+                    resolve(); 
                 };
             });
         }
 
         // --- 2. ESTADO GLOBAL ---
-        let library = [], currentTrack = null, editingId = null;
-        let grainPlayer, filter, limiter, currentPitch = 0;
-        let audioBuffers = {}; 
-        let playerInstance = null;
+        let library = [];
+        let currentTrack = null; 
+        let editingId = null;
+        
+        // Componentes Tone.js
+        let grainPlayer = null;
+        let playerInstance = null; // Usado para preview simples
+        let filter = null;
+        let limiter = null;
+        let currentPitch = 0;
 
         window.onload = async () => {
             await initDB();
-            try { await Tone.start(); } catch(e){}
+            // NÃO iniciamos Tone.js aqui para evitar bloqueio do navegador.
+            // O contexto será iniciado no primeiro clique do usuário.
         };
 
         function nav(s) {
-            // Parar playback ao trocar
-            if(playerInstance) { playerInstance.stop(); playerInstance.dispose(); playerInstance = null; updateBtn(false); }
+            stopAllAudio(); // Para tudo ao trocar de aba
             document.querySelectorAll('.screen').forEach(el => el.classList.remove('active'));
             document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+            
             document.getElementById('screen-'+s).classList.add('active');
-            const idx = s === 'library' ? 0 : 1;
-            document.querySelectorAll('.tab-btn')[idx].classList.add('active');
+            
+            // Ativa visualmente o botão da tab
+            const tabs = document.querySelectorAll('.tab-btn');
+            if(s === 'library') tabs[0].classList.add('active');
+            else tabs[1].classList.add('active');
+        }
+
+        function stopAllAudio() {
+            if(playerInstance) {
+                if(playerInstance.state === 'started') playerInstance.stop();
+                playerInstance.dispose();
+                playerInstance = null;
+            }
+            if(grainPlayer) {
+                if(grainPlayer.state === 'started') grainPlayer.stop();
+                // Não damos dispose no grainPlayer aqui para não ter que recarregar o buffer se voltar pra tela
+            }
+            updateBtn(false);
+            // Reseta icones da lista
+            document.querySelectorAll('.btn-play i').forEach(i=>i.className='fas fa-play');
         }
 
         // --- 3. IMPORTAÇÃO ---
+        async function triggerImport() {
+            // Inicia contexto de áudio com gesto do usuário
+            await Tone.start();
+            document.getElementById('fileInput').click();
+        }
+
         async function handleImport(files) {
             if(!files.length) return;
-            showLoader();
+            showLoader("Importando...");
             const filesArray = Array.from(files);
             
             for (const file of filesArray) {
-                // Aceita qualquer coisa que tenha audio no tipo ou nome comum
-                if (file.size > 1000) {
+                if (file.size > 100) { // Mínimo de bytes
                     try {
-                        const arrayBuffer = await file.arrayBuffer();
-                        // Testa decodificação rápida
-                        await Tone.context.decodeAudioData(arrayBuffer.slice(0));
-                        
-                        const blob = new Blob([arrayBuffer], { type: file.type || "audio/mpeg" });
+                        // Apenas salvamos o Blob, NÃO decodificamos agora para economizar memória
                         const name = file.name.replace(/\.[^/.]+$/, "");
-                        
-                        await saveToDB(blob, name);
+                        await saveToDB(file, name);
                     } catch(e) {
-                        console.error("Arquivo inválido:", file.name);
+                        console.error("Erro ao salvar:", file.name);
                     }
                 }
             }
-            loadTracks(); 
+            await loadTracks(); 
             hideLoader(); 
             showToast("Importação concluída!");
             document.getElementById('fileInput').value = '';
@@ -345,36 +371,20 @@
             return new Promise(resolve => {
                 if(!dbReady) { resolve(); return; }
                 const tx = db.transaction(['tracks'], 'readwrite');
+                // Guardamos o Blob puro. Decodificamos apenas ao dar Play.
                 tx.objectStore('tracks').add({name:name, blob:blob, date:Date.now()});
                 tx.oncomplete = () => resolve();
                 tx.onerror = () => resolve();
             });
         }
 
-        async function loadTracks() {
+        function loadTracks() {
             if(!dbReady) return;
             const tx = db.transaction(['tracks'], 'readonly');
-            tx.objectStore('tracks').getAll().onsuccess = async e => {
-                library = e.target.result.reverse();
-                await loadBuffersForLibrary(library); // Pré-carrega para ser rápido
+            tx.objectStore('tracks').getAll().onsuccess = e => {
+                library = e.target.result.reverse(); // Mais recentes primeiro
                 renderLib();
             };
-        }
-
-        async function loadBuffersForLibrary(tracks) {
-            // Carrega apenas os metadados dos buffers, não o áudio todo na RAM de uma vez se for muito
-            // Mas para preview rápido, tentamos carregar os primeiros
-            const context = Tone.context;
-            const loadPromises = tracks.map(item => {
-                if (!audioBuffers[item.id] && item.blob) {
-                    return item.blob.arrayBuffer()
-                        .then(ab => context.decodeAudioData(ab))
-                        .then(buffer => { audioBuffers[item.id] = buffer; })
-                        .catch(e => { audioBuffers[item.id] = null; });
-                }
-                return Promise.resolve();
-            });
-            await Promise.all(loadPromises);
         }
 
         // --- 4. RENDERIZAR BIBLIOTECA ---
@@ -383,7 +393,7 @@
             list.innerHTML = "";
             
             if(!library.length) {
-                list.innerHTML = `<div style="text-align:center; padding:40px; color:#444"><i class="fas fa-folder-open" style="font-size:2rem; margin-bottom:10px;"></i><br>Vazio</div>`;
+                list.innerHTML = `<div style="text-align:center; padding:40px; color:#444"><i class="fas fa-music" style="font-size:2rem; margin-bottom:10px;"></i><br>Biblioteca vazia</div>`;
                 return;
             }
 
@@ -393,16 +403,14 @@
                 div.className = 'music-item';
                 if(currentTrack && currentTrack.id === item.id) div.classList.add('active-track');
                 
-                const bufferStatus = audioBuffers[item.id] ? "" : " (Erro)";
-                
                 div.innerHTML = `
                     <div class="music-info">
                         <div class="music-name">${item.name}</div>
-                        <div class="music-date">${new Date(item.date).toLocaleDateString()} • ${size}${bufferStatus}</div>
+                        <div class="music-date">${new Date(item.date).toLocaleDateString()} • ${size}</div>
                     </div>
                     <div class="music-actions">
                         <div class="action-group">
-                            <button class="act-btn btn-play" onclick="previewBuffer(${item.id}, this)"><i class="fas fa-play"></i></button>
+                            <button class="act-btn btn-play" onclick="playPreview(${item.id}, this)"><i class="fas fa-play"></i></button>
                             <button class="act-btn btn-edit" onclick="loadStudio(${item.id})"><i class="fas fa-sliders-h"></i></button>
                         </div>
                         <div class="action-group">
@@ -416,22 +424,293 @@
             });
         }
 
-        // --- 5. AÇÕES (Renomear, Deletar, Compartilhar) ---
+        // --- 5. LÓGICA DE ÁUDIO (SOB DEMANDA) ---
+        
+        // Helper para decodificar Blob -> AudioBuffer
+        async function getAudioBuffer(blob) {
+            try {
+                const arrayBuffer = await blob.arrayBuffer();
+                return await Tone.context.decodeAudioData(arrayBuffer);
+            } catch (e) {
+                console.error("Erro decodificando áudio:", e);
+                throw new Error("Formato não suportado ou arquivo corrompido.");
+            }
+        }
+
+        // Player da Biblioteca (Preview simples)
+        async function playPreview(id, btn) {
+            try {
+                await Tone.start(); // Garante contexto
+            } catch (e) {
+                console.warn("Autoplay bloqueado? Interaja com a página.");
+            }
+            
+            // Se já estiver tocando este ID, para.
+            if(playerInstance && playerInstance.trackId === id && playerInstance.state === 'started') {
+                playerInstance.stop();
+                btn.querySelector('i').className = 'fas fa-play';
+                return;
+            }
+
+            stopAllAudio(); // Para outros sons
+            
+            const item = library.find(t => t.id === id);
+            if(!item) return;
+
+            showLoader("Carregando...");
+            btn.querySelector('i').className = 'fas fa-spinner fa-spin';
+
+            try {
+                const audioBuffer = await getAudioBuffer(item.blob);
+                
+                // FIX: Envolver em Tone.Buffer garante compatibilidade e evita o erro "buffer not set"
+                const toneBuffer = new Tone.Buffer(audioBuffer);
+                
+                playerInstance = new Tone.Player(toneBuffer).toDestination();
+                playerInstance.trackId = id; // Marca qual track é
+                
+                playerInstance.onstop = () => {
+                    if(btn && btn.querySelector('i')) {
+                        btn.querySelector('i').className = 'fas fa-play';
+                    }
+                    if(playerInstance) {
+                        playerInstance.dispose();
+                        playerInstance = null;
+                    }
+                };
+
+                // Aguarda um tick para garantir que o Tone JS processou o buffer
+                await new Promise(r => setTimeout(r, 50));
+                
+                hideLoader();
+                playerInstance.start();
+                btn.querySelector('i').className = 'fas fa-stop';
+                
+            } catch(e) {
+                console.error(e);
+                hideLoader();
+                showToast("Erro ao abrir áudio.");
+                btn.querySelector('i').className = 'fas fa-play';
+            }
+        }
+
+        // Carregar no Estúdio
+        async function loadStudio(id) {
+            await Tone.start();
+            stopAllAudio();
+            
+            const item = library.find(t => t.id === id);
+            if(!item) return;
+
+            nav('studio');
+            document.getElementById('studioName').innerText = item.name;
+            document.getElementById('studioStatus').innerText = "Carregando e decodificando...";
+            showLoader("Preparando Estúdio...");
+
+            try {
+                const buffer = await getAudioBuffer(item.blob);
+                currentTrack = item;
+                setupEngine(buffer);
+            } catch(e) {
+                hideLoader();
+                showToast("Erro: Áudio inválido.");
+                document.getElementById('studioStatus').innerText = "Erro no arquivo.";
+            }
+        }
+
+        function setupEngine(buffer) {
+            // Limpa engine anterior
+            if(grainPlayer) { grainPlayer.dispose(); }
+            if(filter) { filter.dispose(); }
+            if(limiter) { limiter.dispose(); }
+            
+            limiter = new Tone.Limiter(-0.5).toDestination();
+            filter = new Tone.Filter(20000, "lowpass").connect(limiter);
+            
+            // FIX: Envolver em Tone.Buffer para o GrainPlayer também
+            const toneBuffer = new Tone.Buffer(buffer);
+
+            grainPlayer = new Tone.GrainPlayer({
+                buffer: toneBuffer,
+                grainSize: 0.2,
+                overlap: 0.1,
+                detune: 0,
+                playbackRate: 1
+            }).connect(filter);
+            
+            grainPlayer.onstop = () => updateBtn(false);
+
+            hideLoader();
+            document.getElementById('studioStatus').innerText = "Motor Pronto. Duração: " + buffer.duration.toFixed(1) + "s";
+            
+            // Reseta botões de tom
+            setTone(0, document.querySelector('.t-btn.orig'));
+        }
+
+        // --- 6. CONTROLES DO ESTÚDIO ---
+        function setTone(s, btn) {
+            if(!grainPlayer) return;
+            currentPitch = s;
+            
+            // UI
+            document.querySelectorAll('.t-btn').forEach(b => b.className='t-btn'+(b.innerText.includes('ORIGINAL')?' orig':''));
+            btn.classList.add('active');
+            
+            // Engine Logic
+            grainPlayer.detune = s * 100;
+            
+            // Calibração V12
+            if(s < 0) { 
+                grainPlayer.grainSize = 0.25; 
+                grainPlayer.overlap = 0.12; 
+                filter.frequency.value = 3500; 
+            } else if(s > 0) { 
+                grainPlayer.grainSize = 0.15; 
+                grainPlayer.overlap = 0.08; 
+                filter.frequency.value = 18000; 
+            } else { 
+                grainPlayer.grainSize = 0.2; 
+                grainPlayer.overlap = 0.1;
+                filter.frequency.value = 20000; 
+            }
+            
+            document.getElementById('btnSave').classList.add('ready');
+        }
+
+        async function togglePlay() {
+            if(document.getElementById('screen-library').classList.contains('active')) {
+                showToast("Vá para o Estúdio ou clique Play na lista.");
+                return;
+            }
+
+            if(!grainPlayer) {
+                showToast("Carregue uma música primeiro.");
+                return;
+            }
+
+            // FIX: Sempre chamar Tone.start() em gestos de interação
+            await Tone.start();
+            await Tone.context.resume();
+            
+            if(grainPlayer.state === 'started') {
+                grainPlayer.stop();
+                updateBtn(false);
+            } else {
+                // Verificação de segurança antes de startar
+                if (grainPlayer.buffer && grainPlayer.buffer.loaded) {
+                    grainPlayer.start();
+                    updateBtn(true);
+                } else {
+                     showToast("Áudio carregando...");
+                }
+            }
+        }
+
+        function updateBtn(isPlaying) {
+            const b = document.getElementById('btnPlay');
+            if(isPlaying) {
+                b.innerHTML = '<i class="fas fa-pause"></i> PAUSAR';
+                b.style.background = "#ff1744";
+                b.style.color = "#fff";
+            } else {
+                b.innerHTML = '<i class="fas fa-play"></i> OUVIR';
+                b.style.background = "#fff";
+                b.style.color = "#000";
+            }
+        }
+
+        // --- 7. EXPORTAÇÃO E SALVAMENTO ---
+        function openSaveModal() {
+            if(!grainPlayer) return;
+            const s = currentPitch > 0 ? "+" : "";
+            document.getElementById('saveInput').value = `${currentTrack.name} (${s}${currentPitch})`;
+            openModal('saveModal');
+        }
+
+        async function confirmSave() {
+            const name = document.getElementById('saveInput').value;
+            closeModal('saveModal');
+            showLoader("Renderizando áudio...");
+            stopAllAudio();
+
+            // Pequeno delay para UI atualizar
+            setTimeout(async () => {
+                try {
+                    // Importante: Para Offline render, usamos o buffer original. 
+                    // O grainPlayer do Tone.js pode ter um buffer encapsulado, então acessamos .get() se for Tone.Buffer
+                    let rawBuffer = grainPlayer.buffer;
+                    if(rawBuffer.get) rawBuffer = rawBuffer.get(); 
+
+                    const duration = rawBuffer.duration;
+
+                    const renderedBuffer = await Tone.Offline(async ({ transport }) => {
+                        // Recria o setup para renderização offline
+                        // É crucial passar um NOVO Tone.Buffer ou o AudioBuffer puro aqui
+                        const gp = new Tone.GrainPlayer({
+                            buffer: rawBuffer, 
+                            grainSize: grainPlayer.grainSize,
+                            overlap: grainPlayer.overlap,
+                            detune: currentPitch * 100,
+                            playbackRate: 1
+                        });
+                        
+                        const f = new Tone.Filter(filter.frequency.value, "lowpass");
+                        const l = new Tone.Limiter(-0.5).toDestination();
+                        
+                        gp.connect(f);
+                        f.connect(l);
+                        gp.start(0);
+                    }, duration);
+
+                    const wavBlob = bufferToWave(renderedBuffer, duration * renderedBuffer.sampleRate);
+                    
+                    // Salva no DB
+                    await saveToDB(wavBlob, name);
+                    
+                    // Recarrega lista
+                    loadTracks();
+
+                    // Tenta compartilhar
+                    if(navigator.canShare && navigator.share) {
+                         const f = new File([wavBlob], name+".wav", {type: "audio/wav"});
+                         navigator.share({files:[f], title:name})
+                            .catch(() => forceDownload(wavBlob, name));
+                    } else {
+                        forceDownload(wavBlob, name);
+                    }
+                    
+                    hideLoader();
+                    nav('library');
+                    showToast("Salvo com sucesso!");
+
+                } catch(e) {
+                    console.error(e);
+                    hideLoader();
+                    showToast("Erro ao renderizar.");
+                }
+            }, 100);
+        }
+
+        // --- 8. GERENCIAMENTO DE ITENS ---
         function promptRename(id) {
-            editingId = id; 
+            editingId = id;
             const item = library.find(t => t.id === id);
             document.getElementById('renameInput').value = item.name;
             openModal('renameModal');
         }
+
         document.getElementById('btnConfirmRename').onclick = () => {
             const n = document.getElementById('renameInput').value;
             if(n && editingId && dbReady) {
                 const tx = db.transaction(['tracks'], 'readwrite');
                 tx.objectStore('tracks').get(editingId).onsuccess = e => {
-                    const d = e.target.result; d.name = n;
+                    const d = e.target.result; 
+                    d.name = n;
                     tx.objectStore('tracks').put(d).onsuccess = () => { 
                         loadTracks(); closeModal('renameModal'); 
-                        if(currentTrack && currentTrack.id === editingId) document.getElementById('studioName').innerText = n;
+                        if(currentTrack && currentTrack.id === editingId) {
+                            document.getElementById('studioName').innerText = n;
+                        }
                     };
                 };
             }
@@ -439,8 +718,7 @@
 
         function deleteTrack(id) {
             if(confirm("Excluir permanentemente?")) {
-                if(playerInstance) { playerInstance.stop(); updateBtn(false); }
-                delete audioBuffers[id];
+                stopAllAudio();
                 const tx = db.transaction(['tracks'], 'readwrite');
                 tx.objectStore('tracks').delete(id).onsuccess = () => loadTracks();
             }
@@ -450,165 +728,80 @@
             const item = library.find(t => t.id === id);
             if(!item) return;
             
-            // Compartilhamento Nativo (WhatsApp)
+            const f = new File([item.blob], item.name + ".wav", {type: "audio/wav"});
             if(navigator.canShare && navigator.share) {
-                const f = new File([item.blob], item.name + ".wav", {type: "audio/wav"});
                 navigator.share({ files: [f], title: item.name })
-                    .catch(() => forceDownload(item)); // Fallback se cancelar
+                    .catch(() => forceDownload(item.blob, item.name));
             } else {
-                forceDownload(item); // Fallback se não suportar
+                forceDownload(item.blob, item.name);
             }
         }
 
-        function forceDownload(item) {
-            const url = URL.createObjectURL(item.blob);
+        function forceDownload(blob, name) {
+            const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
-            a.href = url; a.download = item.name + ".wav"; a.click();
+            a.href = url; 
+            a.download = name + ".wav"; 
+            a.click();
             URL.revokeObjectURL(url);
-            showToast("Salvo em Downloads.");
-        }
-
-        // --- 6. PLAYBACK (PREVIEW & STUDIO) ---
-        async function previewBuffer(id, btn) {
-            if(!audioBuffers[id]) { showToast("Áudio não pronto."); return; }
-            await Tone.start();
-            
-            // Para anterior
-            if(playerInstance) { playerInstance.stop(); playerInstance.dispose(); playerInstance = null; updateBtn(false); }
-            document.querySelectorAll('.btn-play i').forEach(i=>i.className='fas fa-play');
-
-            // Toca novo
-            playerInstance = new Tone.Player(audioBuffers[id]).toDestination();
-            playerInstance.start();
-            btn.querySelector('i').className='fas fa-stop';
-            
-            playerInstance.onstop = () => {
-                btn.querySelector('i').className='fas fa-play';
-                playerInstance.dispose(); playerInstance = null;
-            };
-        }
-
-        function loadStudio(id) {
-            const buffer = audioBuffers[id];
-            if (!buffer) { showToast("Erro no áudio."); return; }
-            
-            currentTrack = library.find(t => t.id === id);
-            if(playerInstance) { playerInstance.stop(); playerInstance.dispose(); playerInstance = null; }
-            
-            nav('studio');
-            document.getElementById('studioName').innerText = currentTrack.name;
-            document.getElementById('studioStatus').innerText = "Carregando motor...";
-            
-            setupEngine(buffer);
-        }
-
-        async function setupEngine(buffer) {
-            showLoader(); await Tone.start();
-            if(grainPlayer) { grainPlayer.dispose(); filter.dispose(); limiter.dispose(); }
-            
-            limiter = new Tone.Limiter(-0.5).toDestination();
-            filter = new Tone.Filter(20000, "lowpass").connect(limiter);
-            
-            grainPlayer = new Tone.GrainPlayer({
-                buffer: buffer, grainSize:0.2, overlap:0.1, detune:0, playbackRate:1,
-                onload: () => { hideLoader(); document.getElementById('studioStatus').innerText="Pronto"; setTone(0, document.querySelector('.t-btn.orig')); },
-                onerror: () => { hideLoader(); showToast("Erro engine."); }
-            }).connect(filter);
-            
-            grainPlayer.onstop = () => updateBtn(false);
-            playerInstance = grainPlayer;
-        }
-
-        // --- 7. MOTOR DE TOM (V12 LOGIC) ---
-        function setTone(s, btn) {
-            if(!grainPlayer) return;
-            currentPitch = s;
-            document.querySelectorAll('.t-btn').forEach(b => b.className='t-btn'+(b.innerText.includes('ORIGINAL')?' orig':''));
-            btn.classList.add('active');
-            grainPlayer.detune = s*100; grainPlayer.playbackRate = 1;
-            
-            // V12 Calibração
-            if(s<0) { grainPlayer.grainSize=0.23; grainPlayer.overlap=0.11; filter.frequency.value=3500; }
-            else if(s>0) { grainPlayer.grainSize=0.18; grainPlayer.overlap=0.09; filter.frequency.value=18000; }
-            else { filter.frequency.value=20000; }
-            document.getElementById('btnSave').classList.add('ready');
-        }
-
-        async function togglePlay() {
-            if(!playerInstance) return; await Tone.context.resume();
-            if(playerInstance.state==='started') { playerInstance.stop(); updateBtn(false); }
-            else { playerInstance.start(); updateBtn(true); }
-        }
-
-        function updateBtn(p) {
-            const b = document.getElementById('btnPlay');
-            if(p) { b.innerHTML='<i class="fas fa-pause"></i> PAUSAR'; b.style.background="#ff1744"; b.style.color="#fff"; }
-            else { b.innerHTML='<i class="fas fa-play"></i> OUVIR'; b.style.background="#fff"; b.style.color="#000"; }
-        }
-
-        // --- 8. SALVAR/EXPORTAR ---
-        function openSaveModal() {
-            if(!grainPlayer) return;
-            const s = currentPitch>0?"+":"";
-            document.getElementById('saveInput').value = `${currentTrack.name} (${s}${currentPitch})`;
-            openModal('saveModal');
-        }
-
-        async function confirmSave() {
-            const name = document.getElementById('saveInput').value;
-            closeModal('saveModal'); showLoader();
-            
-            setTimeout(async()=>{
-                try {
-                    const buf = await Tone.Offline(async({transport})=>{
-                        const gp = new Tone.GrainPlayer({buffer: grainPlayer.buffer, grainSize:grainPlayer.grainSize, overlap:grainPlayer.overlap, detune:currentPitch*100, playbackRate:1});
-                        const f = new Tone.Filter(filter.frequency.value, "lowpass");
-                        const l = new Tone.Limiter(-0.5).toDestination();
-                        gp.connect(f); f.connect(l); gp.start(0);
-                    }, grainPlayer.buffer.duration);
-                    
-                    const wav = bufferToWave(buf, 0, buf.length);
-                    const blob = new Blob([wav], {type:'audio/wav'});
-                    
-                    // Salva na lib
-                    await saveToDB(blob, name);
-                    loadTracks();
-
-                    // Tenta compartilhar
-                    if(navigator.canShare && navigator.share) {
-                         const f = new File([blob], name+".wav", {type: "audio/wav"});
-                         navigator.share({files:[f], title:name}).catch(()=>{ forceDownload({blob:blob, name:name}); });
-                    } else {
-                        forceDownload({blob:blob, name:name});
-                    }
-                    
-                    hideLoader(); nav('library'); 
-                } catch(e) { hideLoader(); showToast("Erro ao renderizar."); }
-            }, 100);
+            showToast("Baixando arquivo...");
         }
 
         // --- UTILS ---
         function openModal(id) { document.getElementById(id).style.display='flex'; }
         function closeModal(id) { document.getElementById(id).style.display='none'; }
-        function showLoader() { document.getElementById('loader').style.display='flex'; }
+        function showLoader(txt="Processando...") { 
+            document.getElementById('loaderText').innerText = txt;
+            document.getElementById('loader').style.display='flex'; 
+        }
         function hideLoader() { document.getElementById('loader').style.display='none'; }
-        function showToast(m) { const t=document.getElementById('toast'); t.innerText=m; t.className="show"; setTimeout(()=>t.className="", 3000); }
+        function showToast(m) { 
+            const t=document.getElementById('toast'); 
+            t.innerText=m; t.className="show"; 
+            setTimeout(()=>t.className="", 3000); 
+        }
 
-        // WAV Encoder
-        function bufferToWave(abuffer, offset, len) {
-            let numOfChan = abuffer.numberOfChannels, length = len * numOfChan * 2 + 44, buffer = new ArrayBuffer(length), view = new DataView(buffer), channels = [], i, sample, pos = 0;
-            setUint32(0x46464952); setUint32(length - 8); setUint32(0x45564157); setUint32(0x20746d66); setUint32(16); setUint16(1); setUint16(numOfChan);
-            setUint32(abuffer.sampleRate); setUint32(abuffer.sampleRate * 2 * numOfChan); setUint16(numOfChan * 2); setUint16(16); setUint32(0x61746164);
-            setUint32(length - pos - 4);
+        // Função WAV Encoder mais robusta
+        function bufferToWave(abuffer, len) {
+            let numOfChan = abuffer.numberOfChannels,
+                length = len * numOfChan * 2 + 44,
+                buffer = new ArrayBuffer(length),
+                view = new DataView(buffer),
+                channels = [], i, sample,
+                offset = 0,
+                pos = 0;
+
+            // Header WAV
+            setUint32(0x46464952); // "RIFF"
+            setUint32(length - 8); // file length - 8
+            setUint32(0x45564157); // "WAVE"
+            setUint32(0x20746d66); // "fmt " chunk
+            setUint32(16); // length = 16
+            setUint16(1); // PCM (uncompressed)
+            setUint16(numOfChan);
+            setUint32(abuffer.sampleRate);
+            setUint32(abuffer.sampleRate * 2 * numOfChan); // avg. bytes/sec
+            setUint16(numOfChan * 2); // block-align
+            setUint16(16); // 16-bit
+            setUint32(0x61746164); // "data" - chunk
+            setUint32(length - pos - 4); // chunk length
+
+            // Interleave channels
             for(i = 0; i < abuffer.numberOfChannels; i++) channels.push(abuffer.getChannelData(i));
+
             while(pos < length) {
                 for(i = 0; i < numOfChan; i++) {
-                    sample = Math.max(-1, Math.min(1, channels[i][offset]));
+                    // Clamp e converte para 16-bit PCM
+                    sample = Math.max(-1, Math.min(1, channels[i][offset])); 
                     sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767)|0;
-                    view.setInt16(pos, sample, true); pos += 2;
-                } offset++;
+                    view.setInt16(pos, sample, true); 
+                    pos += 2;
+                }
+                offset++;
             }
+
             return new Blob([buffer], {type: "audio/wav"});
+
             function setUint16(data) { view.setUint16(pos, data, true); pos += 2; }
             function setUint32(data) { view.setUint32(pos, data, true); pos += 4; }
         }
