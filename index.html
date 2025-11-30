@@ -673,7 +673,7 @@
                     if(navigator.canShare && navigator.share) {
                          const f = new File([wavBlob], name+".wav", {type: "audio/wav"});
                          navigator.share({files:[f], title:name})
-                            .catch(() => forceDownload(wavBlob, name));
+                            .catch((e) => console.log("Share cancelado/erro", e));
                     } else {
                         forceDownload(wavBlob, name);
                     }
@@ -730,7 +730,7 @@
             const f = new File([item.blob], item.name + ".wav", {type: "audio/wav"});
             if(navigator.canShare && navigator.share) {
                 navigator.share({ files: [f], title: item.name })
-                    .catch(() => forceDownload(item.blob, item.name));
+                    .catch((e) => console.log("Share cancelado/erro", e));
             } else {
                 forceDownload(item.blob, item.name);
             }
@@ -806,4 +806,4 @@
         }
     </script>
 </body>
-</html>
+</html
