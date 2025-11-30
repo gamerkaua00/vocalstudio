@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="theme-color" content="#000000">
     <meta name="description" content="Editor de áudio vocal simples via web">
-    <title>VocalStudio V1</title>
+    <title>VocalStudio V1 (Fixed V1.8)</title>
     
     <!-- Motor de Áudio -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
@@ -209,7 +209,7 @@
     </div>
 
     <header>
-        <div class="logo">VOCAL<span>STUDIO</span> <span style="font-size:0.6rem; color:#666; border:1px solid #333; padding:2px 4px; border-radius:4px;">GITHUB</span></div>
+        <div class="logo">VOCAL<span>STUDIO</span> <span style="font-size:0.6rem; color:#666; border:1px solid #333; padding:2px 4px; border-radius:4px;">V1.8 FINAL</span></div>
         <div id="dbStatus" style="font-size:0.7rem; color:#444; margin-left: 10px;">Init...</div>
     </header>
 
@@ -266,7 +266,7 @@
         // --- 1. BANCO DE DADOS (PERSISTÊNCIA) ---
         let db;
         let dbReady = false;
-        const DB_NAME = "VocalStudioV1_Clean";
+        const DB_NAME = "VocalStudioV1_Fixed";
 
         function initDB() {
             return new Promise((resolve) => {
@@ -303,6 +303,9 @@
         let filter = null;
         let limiter = null;
         let currentPitch = 0;
+        
+        // CORREÇÃO: Buffer Global Seguro
+        let currentAudioBuffer = null;
 
         window.onload = async () => {
             await initDB();
@@ -464,7 +467,6 @@
                 const audioBuffer = await getAudioBuffer(item.blob);
                 
                 // FIX: Instanciando diretamente com o buffer (sem wrapper manual Tone.Buffer)
-                // Isso força o Tone a criar o buffer interno e marcar como loaded = true
                 playerInstance = new Tone.Player(audioBuffer).toDestination();
                 playerInstance.trackId = id; // Marca qual track é
                 
@@ -519,11 +521,15 @@
             if(grainPlayer) { grainPlayer.dispose(); }
             if(filter) { filter.dispose(); }
             if(limiter) { limiter.dispose(); }
+
+            // FIX: Guardar referência global do AudioBuffer
+            currentAudioBuffer = buffer;
             
             limiter = new Tone.Limiter(-0.5).toDestination();
             filter = new Tone.Filter(20000, "lowpass").connect(limiter);
             
-            // FIX: Passando buffer diretamente no construtor para garantir loaded=true
+            // FIX: Passar AudioBuffer diretamente para o construtor do GrainPlayer
+            // Isto permite que o Tone.js faça o wrapper automaticamente
             grainPlayer = new Tone.GrainPlayer(buffer).connect(filter);
             
             // Configurações iniciais
@@ -589,13 +595,7 @@
                 updateBtn(false);
             } else {
                 try {
-                    // FIX CRÍTICO: Verificar se o buffer interno está 'loaded'.
-                    // Se não estiver (bug do Tone.js), forçamos para true pois sabemos que o AudioBuffer existe.
-                    if (grainPlayer.buffer && !grainPlayer.buffer.loaded) {
-                        console.warn("Forçando buffer loaded=true");
-                        grainPlayer.buffer.loaded = true;
-                    }
-                    
+                    // Verificação simplificada
                     grainPlayer.start();
                     updateBtn(true);
                 } catch(e) {
@@ -618,7 +618,7 @@
             }
         }
 
-        // --- 7. EXPORTAÇÃO E SALVAMENTO ---
+        // --- 7. EXPORTAÇÃO E SALVAMENTO (REESCRITO V1.8) ---
         function openSaveModal() {
             if(!grainPlayer) return;
             const s = currentPitch > 0 ? "+" : "";
@@ -629,65 +629,110 @@
         async function confirmSave() {
             const name = document.getElementById('saveInput').value;
             closeModal('saveModal');
-            showLoader("Renderizando áudio...");
+            
+            if(!currentAudioBuffer) {
+                showToast("Erro: Buffer de áudio não encontrado.");
+                return;
+            }
+
+            // --- CRIATIVIDADE: BYPASS SE FOR ORIGINAL ---
+            if(currentPitch === 0) {
+                showToast("A guardar original...");
+                setTimeout(async () => {
+                     try {
+                        const wavBlob = bufferToWave(currentAudioBuffer);
+                        await saveToDB(wavBlob, name);
+                        loadTracks();
+                        
+                        // Download/Share
+                        if(navigator.canShare && navigator.share) {
+                              const f = new File([wavBlob], name+".wav", {type: "audio/wav"});
+                              navigator.share({files:[f], title:name}).catch(()=>{});
+                        } else {
+                            forceDownload(wavBlob, name);
+                        }
+                        
+                        nav('library');
+                        showToast("Salvo instantaneamente!");
+                     } catch(e) {
+                        showToast("Erro ao guardar original.");
+                     }
+                }, 50);
+                return;
+            }
+
+            showLoader("Renderizando... (Pode demorar)");
             stopAllAudio();
 
-            // Pequeno delay para UI atualizar
-            setTimeout(async () => {
+            // FIX: Aumentar o timeout para 60 segundos (1 minuto)
+            const timeoutDuration = 60000; 
+
+            const renderPromise = new Promise(async (resolve, reject) => {
                 try {
-                    // Importante: Para Offline render, usamos o buffer original. 
-                    // O grainPlayer do Tone.js pode ter um buffer encapsulado, então acessamos .get() se for Tone.Buffer
-                    let rawBuffer = grainPlayer.buffer;
-                    if(rawBuffer.get) rawBuffer = rawBuffer.get(); 
+                    const duration = currentAudioBuffer.duration;
+                    const currentGrainSize = grainPlayer.grainSize;
+                    const currentOverlap = grainPlayer.overlap;
+                    const currentDetune = currentPitch * 100;
+                    const currentFreq = filter.frequency.value;
 
-                    const duration = rawBuffer.duration;
-
+                    // Tone.Offline
                     const renderedBuffer = await Tone.Offline(async ({ transport }) => {
-                        // Recria o setup para renderização offline
-                        // É crucial passar um NOVO Tone.Buffer ou o AudioBuffer puro aqui
-                        const gp = new Tone.GrainPlayer({
-                            buffer: rawBuffer, 
-                            grainSize: grainPlayer.grainSize,
-                            overlap: grainPlayer.overlap,
-                            detune: currentPitch * 100,
-                            playbackRate: 1
-                        });
                         
-                        const f = new Tone.Filter(filter.frequency.value, "lowpass");
+                        // FIX: Inicialização simplificada no contexto Offline
+                        // Passamos o AudioBuffer diretamente.
+                        const gp = new Tone.GrainPlayer(currentAudioBuffer);
+                        
+                        gp.grainSize = currentGrainSize;
+                        gp.overlap = currentOverlap;
+                        gp.detune = currentDetune;
+                        gp.playbackRate = 1;
+                        gp.loop = false; // Garante que não faz loop infinito
+
+                        const f = new Tone.Filter(currentFreq, "lowpass");
                         const l = new Tone.Limiter(-0.5).toDestination();
                         
                         gp.connect(f);
                         f.connect(l);
                         gp.start(0);
+                        
                     }, duration);
-
-                    const wavBlob = bufferToWave(renderedBuffer, duration * renderedBuffer.sampleRate);
                     
-                    // Salva no DB
-                    await saveToDB(wavBlob, name);
-                    
-                    // Recarrega lista
-                    loadTracks();
-
-                    // Tenta compartilhar
-                    if(navigator.canShare && navigator.share) {
-                         const f = new File([wavBlob], name+".wav", {type: "audio/wav"});
-                         navigator.share({files:[f], title:name})
-                            .catch((e) => console.log("Share cancelado/erro", e));
-                    } else {
-                        forceDownload(wavBlob, name);
-                    }
-                    
-                    hideLoader();
-                    nav('library');
-                    showToast("Salvo com sucesso!");
+                    resolve(renderedBuffer);
 
                 } catch(e) {
-                    console.error(e);
-                    hideLoader();
-                    showToast("Erro ao renderizar.");
+                    reject(e);
                 }
-            }, 100);
+            });
+
+            // Timeout de segurança aumentado
+            const timeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error("Limite de tempo (60s) excedido. Tente um áudio mais curto.")), timeoutDuration)
+            );
+
+            try {
+                // Corrida entre renderização e timeout
+                const finalBuffer = await Promise.race([renderPromise, timeoutPromise]);
+                
+                const wavBlob = bufferToWave(finalBuffer);
+                await saveToDB(wavBlob, name);
+                loadTracks();
+
+                if(navigator.canShare && navigator.share) {
+                      const f = new File([wavBlob], name+".wav", {type: "audio/wav"});
+                      navigator.share({files:[f], title:name}).catch(()=>{});
+                } else {
+                    forceDownload(wavBlob, name);
+                }
+                
+                hideLoader();
+                nav('library');
+                showToast("Salvo com sucesso!");
+
+            } catch(e) {
+                console.error(e);
+                hideLoader();
+                showToast("Erro: " + e.message);
+            }
         }
 
         // --- 8. GERENCIAMENTO DE ITENS ---
@@ -760,15 +805,16 @@
             setTimeout(()=>t.className="", 3000); 
         }
 
-        // Função WAV Encoder mais robusta
-        function bufferToWave(abuffer, len) {
-            let numOfChan = abuffer.numberOfChannels,
-                length = len * numOfChan * 2 + 44,
-                buffer = new ArrayBuffer(length),
-                view = new DataView(buffer),
-                channels = [], i, sample,
-                offset = 0,
-                pos = 0;
+        // --- ENCODER WAV ROBUSTO (CORRIGIDO) ---
+        function bufferToWave(abuffer) {
+            const numOfChan = abuffer.numberOfChannels;
+            // Usamos abuffer.length (número de amostras) em vez de duração * sampleRate
+            // Isso evita erros de arredondamento
+            const length = abuffer.length * numOfChan * 2 + 44;
+            const buffer = new ArrayBuffer(length);
+            const view = new DataView(buffer);
+            const channels = [];
+            let i, sample, offset = 0, pos = 0;
 
             // Header WAV
             setUint32(0x46464952); // "RIFF"
@@ -785,15 +831,17 @@
             setUint32(0x61746164); // "data" - chunk
             setUint32(length - pos - 4); // chunk length
 
-            // Interleave channels
+            // Get channels
             for(i = 0; i < abuffer.numberOfChannels; i++) channels.push(abuffer.getChannelData(i));
 
-            while(pos < length) {
+            // Write data (Usando abuffer.length para garantir que não estoura o índice)
+            while(offset < abuffer.length) {
                 for(i = 0; i < numOfChan; i++) {
-                    // Clamp e converte para 16-bit PCM
-                    sample = Math.max(-1, Math.min(1, channels[i][offset])); 
-                    sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767)|0;
-                    view.setInt16(pos, sample, true); 
+                    // Clamp seguro
+                    let s = Math.max(-1, Math.min(1, channels[i][offset]));
+                    // 16-bit PCM conversion
+                    s = (s < 0 ? s * 0x8000 : s * 0x7FFF) | 0;
+                    view.setInt16(pos, s, true); 
                     pos += 2;
                 }
                 offset++;
@@ -806,4 +854,4 @@
         }
     </script>
 </body>
-</html
+</html>
