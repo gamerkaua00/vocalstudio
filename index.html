@@ -463,10 +463,9 @@
             try {
                 const audioBuffer = await getAudioBuffer(item.blob);
                 
-                // FIX: Envolver em Tone.Buffer garante compatibilidade e evita o erro "buffer not set"
-                const toneBuffer = new Tone.Buffer(audioBuffer);
-                
-                playerInstance = new Tone.Player(toneBuffer).toDestination();
+                // FIX: Instanciando diretamente com o buffer (sem wrapper manual Tone.Buffer)
+                // Isso força o Tone a criar o buffer interno e marcar como loaded = true
+                playerInstance = new Tone.Player(audioBuffer).toDestination();
                 playerInstance.trackId = id; // Marca qual track é
                 
                 playerInstance.onstop = () => {
@@ -478,9 +477,6 @@
                         playerInstance = null;
                     }
                 };
-
-                // Aguarda um tick para garantir que o Tone JS processou o buffer
-                await new Promise(r => setTimeout(r, 50));
                 
                 hideLoader();
                 playerInstance.start();
@@ -527,16 +523,12 @@
             limiter = new Tone.Limiter(-0.5).toDestination();
             filter = new Tone.Filter(20000, "lowpass").connect(limiter);
             
-            // FIX: Envolver em Tone.Buffer para o GrainPlayer também
-            const toneBuffer = new Tone.Buffer(buffer);
-
-            grainPlayer = new Tone.GrainPlayer({
-                buffer: toneBuffer,
-                grainSize: 0.2,
-                overlap: 0.1,
-                detune: 0,
-                playbackRate: 1
-            }).connect(filter);
+            // FIX: Passando buffer diretamente no construtor para garantir loaded=true
+            grainPlayer = new Tone.GrainPlayer(buffer).connect(filter);
+            
+            // Configurações iniciais
+            grainPlayer.grainSize = 0.2;
+            grainPlayer.overlap = 0.1;
             
             grainPlayer.onstop = () => updateBtn(false);
 
@@ -588,20 +580,27 @@
                 return;
             }
 
-            // FIX: Sempre chamar Tone.start() em gestos de interação
+            // Garante contexto ativo
             await Tone.start();
-            await Tone.context.resume();
+            if(Tone.context.state !== 'running') await Tone.context.resume();
             
             if(grainPlayer.state === 'started') {
                 grainPlayer.stop();
                 updateBtn(false);
             } else {
-                // Verificação de segurança antes de startar
-                if (grainPlayer.buffer && grainPlayer.buffer.loaded) {
+                try {
+                    // FIX CRÍTICO: Verificar se o buffer interno está 'loaded'.
+                    // Se não estiver (bug do Tone.js), forçamos para true pois sabemos que o AudioBuffer existe.
+                    if (grainPlayer.buffer && !grainPlayer.buffer.loaded) {
+                        console.warn("Forçando buffer loaded=true");
+                        grainPlayer.buffer.loaded = true;
+                    }
+                    
                     grainPlayer.start();
                     updateBtn(true);
-                } else {
-                     showToast("Áudio carregando...");
+                } catch(e) {
+                     console.error(e);
+                     showToast("Erro ao tocar: " + e.message);
                 }
             }
         }
