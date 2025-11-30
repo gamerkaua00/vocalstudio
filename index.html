@@ -2,157 +2,181 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>VocalStudio V75 UI Fix</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#000000">
+    <title>VocalStudio V1</title>
     
-    <!-- Motor de Áudio (Tone.js) -->
+    <!-- Motor de Áudio -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
     <style>
         :root {
-            --bg: #000000; --surface: #121212; --primary: #00e676; 
-            --accent: #2979ff; --text: #ffffff; --danger: #ff1744;
+            --bg: #000000;
+            --card: #121212;
+            --primary: #00e676; /* Verde Destaque */
+            --accent: #651fff; /* Roxo Marca */
+            --text: #ffffff;
+            --text-sec: #888888;
+            --danger: #ff1744;
         }
 
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; outline: none; }
-        body { font-family: sans-serif; background: var(--bg); color: var(--text); margin: 0; height: 100vh; display: flex; flex-direction: column; overflow: hidden; user-select: none; }
 
-        /* HEADER COM ÁREA SEGURA NO TOPO */
-        header { 
-            padding: 15px; 
-            padding-top: max(15px, env(safe-area-inset-top)); 
-            background: #0a0a0a; 
-            border-bottom: 1px solid #222; 
-            display: flex; justify-content: center; align-items: center; 
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        /* HEADER */
+        header {
+            padding: 15px;
+            background: #0a0a0a;
+            border-bottom: 1px solid #222;
+            display: flex; justify-content: center; align-items: center;
+            z-index: 10;
         }
         .logo { font-weight: 900; font-size: 1.2rem; letter-spacing: 1px; }
         .logo span { color: var(--primary); }
 
-        .tabs { display: flex; background: #000; height: 60px; border-bottom: 1px solid #222; flex-shrink: 0; }
-        .tab-btn { flex: 1; background: none; border: none; color: #666; font-weight: bold; font-size: 0.8rem; transition: 0.2s; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; }
+        /* TABS */
+        .tabs {
+            display: flex; background: #000; height: 60px; border-bottom: 1px solid #222; flex-shrink: 0;
+        }
+        .tab-btn {
+            flex: 1; background: transparent; border: none; color: #666;
+            font-weight: 600; font-size: 0.8rem; transition: 0.2s;
+            display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+        }
+        .tab-btn i { font-size: 1.2rem; }
         .tab-btn.active { color: var(--text); background: #111; border-bottom: 3px solid var(--primary); }
+        .tab-btn.active i { color: var(--primary); }
 
-        /* AUMENTO DO PADDING INFERIOR PARA NÃO COBRIR CONTEÚDO */
-        .screen { 
-            flex: 1; 
-            overflow-y: auto; 
-            padding: 20px; 
-            display: none; 
-            padding-bottom: 150px; /* Espaço extra garantido para a barra não cobrir nada */
-        }
-        .screen.active { display: block; }
+        /* SCREENS */
+        .screen { flex: 1; overflow-y: auto; padding: 20px; display: none; padding-bottom: 120px; }
+        .screen.active { display: block; animation: fade 0.2s; }
+        @keyframes fade { from { opacity:0; } to { opacity:1; } }
 
-        /* --- BOTÕES DE IMPORTAÇÃO --- */
-        .import-grid { display: grid; grid-template-columns: 1fr; gap: 15px; }
-        .import-wrapper {
-            position: relative; width: 100%; height: 70px; border-radius: 12px; overflow: hidden;
-            box-shadow: 0 4px 10px rgba(0, 230, 118, 0.2);
+        /* --- BIBLIOTECA --- */
+        .import-box {
+            background: var(--card); border-radius: 12px; padding: 20px;
+            text-align: center; border: 1px solid #333; margin-bottom: 20px;
         }
-        .btn-visual {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: linear-gradient(135deg, var(--primary), #00b0ff);
+        
+        .btn-add-music {
+            width: 100%; background: linear-gradient(135deg, var(--primary), #00b0ff);
+            color: #000; border: none; padding: 16px; border-radius: 10px;
+            font-weight: 900; font-size: 1rem; cursor: pointer;
             display: flex; align-items: center; justify-content: center; gap: 10px;
-            color: #000; font-weight: 900; font-size: 1rem; pointer-events: none; 
+            box-shadow: 0 4px 15px rgba(0, 230, 118, 0.2);
         }
-        .btn-single .btn-visual { background: linear-gradient(135deg, #ffc107, #ff9800); }
+        .btn-add-music:active { transform: scale(0.98); }
+        
+        /* Input Invisível para funcionar click */
+        input[type="file"] { display: none; }
 
-        .input-click-area {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            opacity: 0; cursor: pointer; z-index: 10;
+        .lib-list { display: flex; flex-direction: column; gap: 12px; }
+        
+        .music-item {
+            background: var(--card); border-radius: 12px; padding: 15px;
+            border: 1px solid #222; display: flex; flex-direction: column; gap: 12px;
         }
-        .input-click-area[disabled] { cursor: default; }
+        .music-item.active-track { border-color: var(--primary); background: #181818; }
 
-        /* ESTILOS DA BIBLIOTECA */
-        .lib-list { display: flex; flex-direction: column; gap: 10px; }
-        .music-item { background: #151515; border-radius: 10px; padding: 15px; border: 1px solid #222; display: flex; flex-direction: column; gap: 10px; }
-        .music-item.active { border-color: var(--primary); background: #1a1a1a; }
-        .music-name { font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 80%; }
-        .music-actions { display: flex; gap: 8px; justify-content: space-between; border-top: 1px solid #333; padding-top: 10px; }
+        .music-info { overflow: hidden; }
+        .music-name { font-weight: bold; font-size: 1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #fff; }
+        .music-date { font-size: 0.7rem; color: #666; margin-top: 4px; }
+
+        .music-actions {
+            display: flex; justify-content: space-between; align-items: center;
+            border-top: 1px solid #222; padding-top: 10px;
+        }
         .action-group { display: flex; gap: 8px; }
-
-        .act-btn { width: 44px; height: 44px; background: #222; border: 1px solid #444; color: white; border-radius: 8px; font-size: 1.1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; }
-        .btn-play { color: var(--accent); }
-        .btn-edit { background: var(--primary); color: black; border: none; }
-        .btn-whats { color: #25D366; }
+        
+        .act-btn {
+            width: 40px; height: 40px; border-radius: 8px; border: 1px solid #333;
+            background: #222; color: white; font-size: 1rem; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .btn-play { color: var(--primary); }
+        .btn-edit { background: var(--accent); color: white; border:none; }
+        .btn-share { color: #25D366; } /* WhatsApp Color */
+        .btn-rename { color: #ffab00; }
         .btn-del { color: var(--danger); }
-        .btn-rename { color: #ffc107; }
 
-        /* --- ESTÚDIO RESTAURADO --- */
-        .track-display { background: #151515; padding: 15px; border-radius: 10px; text-align: center; margin-bottom: 20px; border: 1px solid #333; }
-        .track-title { font-size: 1.2rem; font-weight: bold; color: var(--primary); }
-        
-        .tone-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 25px; }
+        /* --- ESTÚDIO --- */
+        .track-display {
+            background: var(--card); padding: 20px; border-radius: 16px; border: 1px solid #333;
+            text-align: center; margin-bottom: 25px;
+        }
+        .track-title-large { font-size: 1.1rem; font-weight: bold; color: var(--primary); display: block; margin-bottom: 5px; }
+        .track-status { font-size: 0.75rem; color: #666; }
+
+        .tone-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
         .t-btn {
-            background: #1a1a1a; border: 1px solid #333; color: #888; padding: 25px 10px;
-            border-radius: 12px; font-size: 1.2rem; cursor: pointer;
-            display: flex; flex-direction: column; align-items: center;
-            transition: transform 0.1s;
+            background: #1a1a1a; border: 1px solid #333; color: #888; padding: 22px;
+            border-radius: 10px; cursor: pointer; font-size: 1.2rem;
+            display: flex; flex-direction: column; align-items: center; transition: 0.2s;
         }
-        .t-btn:active { transform: scale(0.95); }
-        .t-btn span { font-size: 0.65rem; margin-top: 8px; font-weight: bold; opacity: 0.8; letter-spacing: 1px; }
-        .t-btn.active { background: var(--accent); color: black; border-color: var(--accent); font-weight: bold; box-shadow: 0 0 15px rgba(41,121,255,0.4); }
+        .t-btn span { font-size: 0.6rem; margin-top: 6px; font-weight: bold; opacity: 0.7; }
+        .t-btn.active { background: var(--primary); color: #000; border-color: var(--primary); transform: scale(1.02); font-weight: bold; }
         .t-btn.orig { grid-column: span 2; }
-        .t-btn.orig.active { background: white; color: black; box-shadow: 0 0 15px rgba(255,255,255,0.3); }
+        .t-btn.orig.active { background: white; color: black; }
 
-
-        /* --- BARRA INFERIOR (BOTTOM BAR) CORRIGIDA --- */
-        .bottom-bar { 
-            position: fixed; 
-            bottom: 0; 
-            left: 0; 
-            width: 100%; 
-            /* Altura automática para acomodar paddings */
-            height: auto; 
-            min-height: 90px;
-            background: rgba(10,10,10,0.98); 
-            border-top: 1px solid #333; 
-            display: flex; 
-            align-items: center; 
-            padding: 15px 20px; 
-            gap: 15px; 
-            z-index: 1000; /* Z-Index alto para ficar por cima */
-            
-            /* Respeita a área segura do iPhone/Android (a barrinha preta embaixo) */
-            padding-bottom: calc(15px + env(safe-area-inset-bottom));
-            backdrop-filter: blur(10px);
+        /* BARRA PLAYER */
+        .player-bar {
+            position: fixed; bottom: 0; left: 0; width: 100%; height: 85px;
+            background: rgba(15,15,15,0.98); border-top: 1px solid #333;
+            display: flex; align-items: center; padding: 0 20px; gap: 15px; z-index: 200;
+            padding-bottom: env(safe-area-inset-bottom); backdrop-filter: blur(10px);
         }
-        
-        .c-btn { 
-            flex: 1; 
-            height: 55px; 
-            border-radius: 12px; 
-            border: none; 
-            font-weight: 900; 
-            font-size: 1rem; 
-            cursor: pointer; 
-            display: flex; 
-            align-items: center; 
-            justify-content: center; 
-            gap: 8px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        .p-btn {
+            flex: 1; height: 50px; border-radius: 10px; border: none; font-weight: 900;
+            font-size: 1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;
         }
-        .btn-s.ready { background: var(--primary); color: black; pointer-events: auto; }
+        .btn-main-play { background: white; color: black; }
+        .btn-main-save { background: #222; color: #555; pointer-events: none; border: 1px solid #333; }
+        .btn-main-save.ready { background: var(--primary); color: #000; pointer-events: auto; border: none; }
 
-        /* MODALS, LOADER, TOAST */
-        .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 2000; display: none; justify-content: center; align-items: center; }
-        .modal-box { background: #1a1a1a; padding: 25px; border-radius: 16px; width: 85%; text-align: center; border: 1px solid #444; box-shadow: 0 10px 40px rgba(0,0,0,0.5); }
-        .modal-input { width: 100%; background: #000; border: 1px solid #444; color: white; padding: 15px; margin: 20px 0; border-radius: 8px; font-size: 1rem; outline: none; text-align: center; }
-        .modal-input:focus { border-color: var(--primary); }
+        /* LOADER & MODALS */
+        .overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9);
+            z-index: 3000; display: none; justify-content: center; align-items: center;
+        }
+        .modal-box {
+            background: #1a1a1a; padding: 25px; border-radius: 16px; width: 85%; max-width: 320px;
+            text-align: center; border: 1px solid #444;
+        }
+        .modal-input {
+            width: 100%; background: #000; border: 1px solid #444; color: white; padding: 12px;
+            border-radius: 8px; font-size: 1rem; margin: 20px 0; outline: none; text-align: center;
+        }
         .modal-btns { display: flex; gap: 10px; }
-        .m-btn { flex: 1; padding: 15px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; font-size: 1rem; }
-        .m-cancel { background: #333; color: #ccc; }
+        .m-btn { flex: 1; padding: 12px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; }
         .m-confirm { background: var(--primary); color: black; }
+        .m-cancel { background: #333; color: #ccc; }
 
-        #loader { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); display: none; justify-content: center; align-items: center; flex-direction: column; z-index: 3000; }
-        .spinner { width: 50px; height: 50px; border: 5px solid #222; border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s infinite linear; }
+        #loader { z-index: 4000; flex-direction: column; }
+        .spinner { width: 40px; height: 40px; border: 4px solid #222; border-top-color: var(--primary); border-radius: 50%; animation: spin 1s infinite linear; }
         @keyframes spin { to { transform: rotate(360deg); } }
-
-        #toast { visibility: hidden; min-width: 200px; background: #222; color: #fff; text-align: center; border-radius: 50px; padding: 12px 20px; position: fixed; z-index: 4000; left: 50%; bottom: 110px; transform: translateX(-50%); border: 1px solid #555; box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
-        #toast.show { visibility: visible; animation: fadein 0.5s, fadeout 0.5s 2.5s; }
         
-        @keyframes fadein { from {bottom: 60px; opacity: 0;} to {bottom: 110px; opacity: 1;} }
-        @keyframes fadeout { from {bottom: 110px; opacity: 1;} to {bottom: 60px; opacity: 0;} }
+        #toast {
+            visibility: hidden; min-width: 200px; background: #222; color: #fff; text-align: center;
+            border-radius: 50px; padding: 12px; position: fixed; z-index: 5000; left: 50%; bottom: 100px;
+            transform: translateX(-50%); border: 1px solid #444;
+        }
+        #toast.show { visibility: visible; animation: fadein 0.5s, fadeout 0.5s 2.5s; }
+        @keyframes fadein { from {bottom: 50px; opacity: 0;} to {bottom: 100px; opacity: 1;} }
+        @keyframes fadeout { from {bottom: 100px; opacity: 1;} to {bottom: 50px; opacity: 0;} }
+
+        #previewAudio { display: none; }
     </style>
 </head>
 <body>
@@ -160,7 +184,7 @@
     <!-- MODAL RENOMEAR -->
     <div id="renameModal" class="overlay">
         <div class="modal-box">
-            <h3>Renomear</h3>
+            <h3 style="margin:0; color:white">Renomear</h3>
             <input type="text" id="renameInput" class="modal-input">
             <div class="modal-btns">
                 <button class="m-btn m-cancel" onclick="closeModal('renameModal')">Cancelar</button>
@@ -169,48 +193,39 @@
         </div>
     </div>
 
-    <!-- MODAL SALVAR -->
+    <!-- MODAL SALVAR EDIÇÃO -->
     <div id="saveModal" class="overlay">
         <div class="modal-box">
-            <h3 style="color:var(--primary)">Salvar Edição</h3>
+            <h3 style="margin:0; color:var(--primary)">Salvar Edição</h3>
             <input type="text" id="saveInput" class="modal-input" placeholder="Nome do arquivo...">
             <div class="modal-btns">
                 <button class="m-btn m-cancel" onclick="closeModal('saveModal')">Cancelar</button>
-                <button class="m-btn m-confirm" onclick="confirmSave()">Confirmar</button>
+                <button class="m-btn m-confirm" onclick="confirmSave()">Salvar</button>
             </div>
         </div>
     </div>
 
     <header>
-        <div class="logo">VOCAL<span>STUDIO</span></div>
+        <div class="logo">VOCAL<span>STUDIO</span> <span style="font-size:0.6rem; color:#666; border:1px solid #333; padding:2px 4px; border-radius:4px;">V1</span></div>
+        <div id="dbStatus" style="font-size:0.7rem; color:#444;">Init...</div>
     </header>
 
     <div class="tabs">
-        <button class="tab-btn active" onclick="nav('library')"><i class="fas fa-folder-open"></i> BIBLIOTECA</button>
+        <button class="tab-btn active" onclick="nav('library')"><i class="fas fa-book"></i> BIBLIOTECA</button>
         <button class="tab-btn" onclick="nav('studio')"><i class="fas fa-sliders-h"></i> ESTÚDIO</button>
     </div>
 
     <!-- TELA 1: BIBLIOTECA -->
     <div id="screen-library" class="screen active">
-        
-        <div class="import-grid">
-            <div class="import-wrapper">
-                <div class="btn-visual">
-                    <i class="fas fa-folder-plus"></i> IMPORTAR PASTA (ou Múltiplos)
-                </div>
-                <!-- webkitdirectory permite selecionar pastas no desktop; multiple permite múltiplos no celular -->
-                <input type="file" id="multiFile" class="input-click-area" accept="audio/*" multiple webkitdirectory onchange="handleImport(this.files)">
+        <div class="import-box">
+            <button class="btn-add-music" onclick="document.getElementById('fileInput').click()">
+                <i class="fas fa-plus-circle"></i> ADICIONAR MÚSICAS
+            </button>
+            <div style="font-size:0.7rem; color:#666; margin-top:10px;">
+                Selecione múltiplos arquivos ou pastas.
             </div>
-            
-            <div class="import-wrapper btn-single">
-                <div class="btn-visual">
-                    <i class="fas fa-file-audio"></i> IMPORTAR ARQUIVO ÚNICO
-                </div>
-                <input type="file" id="singleFile" class="input-click-area" accept="audio/*" onchange="handleImport(this.files)">
-            </div>
-        </div>
-        <div style="text-align:center; font-size:0.7rem; color:#666; margin-bottom:20px;">
-            Dica: Use o botão de cima para selecionar várias faixas de uma vez.
+            <!-- Input aceita múltiplos -->
+            <input type="file" id="fileInput" accept="audio/*" multiple onchange="handleImport(this.files)">
         </div>
 
         <div id="libList" class="lib-list"></div>
@@ -218,11 +233,11 @@
 
     <!-- TELA 2: ESTÚDIO -->
     <div id="screen-studio" class="screen">
-        <div class="track-display">
-            <div class="track-title" id="studioName">Selecione na Biblioteca</div>
-            <div style="font-size:0.7rem; color:#666" id="studioStatus">Motor em espera.</div>
+        <div class="studio-header">
+            <span class="track-title-large" id="studioName">Selecione na Biblioteca</span>
+            <span class="track-status" id="studioStatus">Motor desligado.</span>
         </div>
-        
+
         <div class="tone-grid">
             <button class="t-btn" onclick="setTone(-2, this)">-2 <span>BAIXO</span></button>
             <button class="t-btn" onclick="setTone(-1, this)">-1 <span>MEIO</span></button>
@@ -230,47 +245,65 @@
             <button class="t-btn" onclick="setTone(1, this)">+1 <span>MEIO</span></button>
             <button class="t-btn" onclick="setTone(2, this)">+2 <span>ALTO</span></button>
         </div>
+        
+        <div style="text-align:center; font-size:0.7rem; color:#444; margin-top:20px;">
+            Engine V12: Graves Suaves / Agudos Rápidos
+        </div>
     </div>
 
-    <div class="bottom-bar">
-        <button class="c-btn btn-p" id="btnPlay" onclick="togglePlay()"><i class="fas fa-play"></i> OUVIR</button>
-        <button class="c-btn btn-s" id="btnSave" onclick="openSaveModal()">SALVAR</button>
+    <!-- PLAYER BAR -->
+    <div class="player-bar">
+        <button class="p-btn btn-main-play" id="btnPlay" onclick="togglePlay()"><i class="fas fa-play"></i> OUVIR</button>
+        <button class="p-btn btn-main-save" id="btnSave" onclick="openSaveModal()"><i class="fas fa-share-alt"></i> ENVIAR</button>
     </div>
 
-    <div id="loader"><div class="spinner"></div><div style="margin-top:10px; color:#888">Lendo Arquivos...</div></div>
+    <div id="loader" class="overlay"><div class="spinner"></div><div style="margin-top:15px; color:#888">Processando...</div></div>
     <div id="toast">Aviso</div>
     <audio id="previewAudio"></audio>
 
     <script>
-        // --- DATABASE (IndexedDB for Persistent Storage) ---
-        let db, dbReady = false;
-        const DB_NAME = "VocalStudioFinal";
-        
+        // --- 1. BANCO DE DADOS (PERSISTÊNCIA) ---
+        let db;
+        let dbReady = false;
+        const DB_NAME = "VocalStudioV1_Clean";
+
         function initDB() {
-            return new Promise((resolve, reject) => {
+            return new Promise((resolve) => {
                 const req = indexedDB.open(DB_NAME, 1);
                 req.onupgradeneeded = e => {
                     db = e.target.result;
-                    if(!db.objectStoreNames.contains('tracks')) db.createObjectStore('tracks', {keyPath:'id', autoIncrement:true});
+                    if(!db.objectStoreNames.contains('tracks')) {
+                        db.createObjectStore('tracks', {keyPath:'id', autoIncrement:true});
+                    }
                 };
-                req.onsuccess = e => { db = e.target.result; dbReady = true; loadTracks(); resolve(); };
-                req.onerror = reject;
+                req.onsuccess = e => { 
+                    db = e.target.result; 
+                    dbReady = true; 
+                    document.getElementById('dbStatus').innerText = "DB OK";
+                    document.getElementById('dbStatus').style.color = "var(--primary)";
+                    loadTracks(); 
+                    resolve();
+                };
+                req.onerror = () => { 
+                    document.getElementById('dbStatus').innerText = "DB Error"; 
+                    resolve(); // Não trava, mas avisa
+                };
             });
         }
 
-        // --- GLOBAL STATE ---
+        // --- 2. ESTADO GLOBAL ---
         let library = [], currentTrack = null, editingId = null;
         let grainPlayer, filter, limiter, currentPitch = 0;
         let audioBuffers = {}; 
-        let playerInstance = null; 
+        let playerInstance = null;
 
         window.onload = async () => {
-            try { await Tone.start(); } catch(e){}
             await initDB();
-            document.getElementById('loader').style.display = 'none';
+            try { await Tone.start(); } catch(e){}
         };
 
         function nav(s) {
+            // Parar playback ao trocar
             if(playerInstance) { playerInstance.stop(); playerInstance.dispose(); playerInstance = null; updateBtn(false); }
             document.querySelectorAll('.screen').forEach(el => el.classList.remove('active'));
             document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
@@ -279,34 +312,38 @@
             document.querySelectorAll('.tab-btn')[idx].classList.add('active');
         }
 
-        // --- IMPORTATION ---
+        // --- 3. IMPORTAÇÃO ---
         async function handleImport(files) {
             if(!files.length) return;
-            showLoader("Processando arquivos...");
+            showLoader();
             const filesArray = Array.from(files);
-            let importedCount = 0;
             
-            for(const file of filesArray) {
-                const isAudio = file.type.indexOf('audio') > -1 || file.name.match(/\.(mp3|wav|m4a|ogg|aac|flac)$/i);
-                if(isAudio) {
+            for (const file of filesArray) {
+                // Aceita qualquer coisa que tenha audio no tipo ou nome comum
+                if (file.size > 1000) {
                     try {
                         const arrayBuffer = await file.arrayBuffer();
-                        await Tone.context.decodeAudioData(arrayBuffer.slice(0)); 
+                        // Testa decodificação rápida
+                        await Tone.context.decodeAudioData(arrayBuffer.slice(0));
+                        
                         const blob = new Blob([arrayBuffer], { type: file.type || "audio/mpeg" });
                         const name = file.name.replace(/\.[^/.]+$/, "");
+                        
                         await saveToDB(blob, name);
-                        importedCount++;
-                    } catch(e) { console.error("Falha:", file.name, e); }
+                    } catch(e) {
+                        console.error("Arquivo inválido:", file.name);
+                    }
                 }
             }
-            loadTracks(); hideLoader(); 
-            showToast(importedCount > 0 ? "Importação concluída!" : "Nenhum áudio válido.");
-            document.getElementById('multiFile').value = '';
-            document.getElementById('singleFile').value = '';
+            loadTracks(); 
+            hideLoader(); 
+            showToast("Importação concluída!");
+            document.getElementById('fileInput').value = '';
         }
 
         function saveToDB(blob, name) {
             return new Promise(resolve => {
+                if(!dbReady) { resolve(); return; }
                 const tx = db.transaction(['tracks'], 'readwrite');
                 tx.objectStore('tracks').add({name:name, blob:blob, date:Date.now()});
                 tx.oncomplete = () => resolve();
@@ -319,18 +356,20 @@
             const tx = db.transaction(['tracks'], 'readonly');
             tx.objectStore('tracks').getAll().onsuccess = async e => {
                 library = e.target.result.reverse();
-                await loadBuffersForLibrary(library);
+                await loadBuffersForLibrary(library); // Pré-carrega para ser rápido
                 renderLib();
             };
         }
 
         async function loadBuffersForLibrary(tracks) {
+            // Carrega apenas os metadados dos buffers, não o áudio todo na RAM de uma vez se for muito
+            // Mas para preview rápido, tentamos carregar os primeiros
             const context = Tone.context;
             const loadPromises = tracks.map(item => {
                 if (!audioBuffers[item.id] && item.blob) {
                     return item.blob.arrayBuffer()
-                        .then(arrayBuffer => context.decodeAudioData(arrayBuffer))
-                        .then(audioBuffer => { audioBuffers[item.id] = audioBuffer; })
+                        .then(ab => context.decodeAudioData(ab))
+                        .then(buffer => { audioBuffers[item.id] = buffer; })
                         .catch(e => { audioBuffers[item.id] = null; });
                 }
                 return Promise.resolve();
@@ -338,69 +377,61 @@
             await Promise.all(loadPromises);
         }
 
-        // --- RENDERING ---
+        // --- 4. RENDERIZAR BIBLIOTECA ---
         function renderLib() {
             const list = document.getElementById('libList');
             list.innerHTML = "";
-            if(!library.length) { list.innerHTML = `<div style="text-align:center; padding:30px; color:#444">Biblioteca Vazia</div>`; return; }
             
+            if(!library.length) {
+                list.innerHTML = `<div style="text-align:center; padding:40px; color:#444"><i class="fas fa-folder-open" style="font-size:2rem; margin-bottom:10px;"></i><br>Vazio</div>`;
+                return;
+            }
+
             library.forEach(item => {
                 const size = (item.blob.size/1024/1024).toFixed(1)+"MB";
                 const div = document.createElement('div');
                 div.className = 'music-item';
-                const bufferReady = audioBuffers[item.id] !== undefined && audioBuffers[item.id] !== null;
-                if(currentTrack && currentTrack.id === item.id) div.classList.add('active');
+                if(currentTrack && currentTrack.id === item.id) div.classList.add('active-track');
+                
+                const bufferStatus = audioBuffers[item.id] ? "" : " (Erro)";
                 
                 div.innerHTML = `
                     <div class="music-info">
                         <div class="music-name">${item.name}</div>
-                        <div class="music-meta"><span>${size}</span> ${!bufferReady ? '<span style="color:#ffc107;">(Inválido)</span>' : ''}</div>
+                        <div class="music-date">${new Date(item.date).toLocaleDateString()} • ${size}${bufferStatus}</div>
                     </div>
                     <div class="music-actions">
                         <div class="action-group">
-                            <button class="act-btn btn-play" onclick="previewBuffer(${item.id}, this)" ${!bufferReady ? 'disabled' : ''}><i class="fas fa-play"></i></button>
-                            <button class="act-btn btn-edit" onclick="loadStudio(${item.id})" ${!bufferReady ? 'disabled' : ''}><i class="fas fa-sliders-h"></i></button>
+                            <button class="act-btn btn-play" onclick="previewBuffer(${item.id}, this)"><i class="fas fa-play"></i></button>
+                            <button class="act-btn btn-edit" onclick="loadStudio(${item.id})"><i class="fas fa-sliders-h"></i></button>
                         </div>
                         <div class="action-group">
                             <button class="act-btn btn-rename" onclick="promptRename(${item.id})"><i class="fas fa-pen"></i></button>
-                            <button class="act-btn btn-whats" onclick="shareItem(${item.id})"><i class="fab fa-whatsapp"></i></button>
-                            <button class="act-btn btn-del" onclick="downloadItem(${item.id})"><i class="fas fa-download"></i></button>
+                            <button class="act-btn btn-share" onclick="shareItem(${item.id})"><i class="fab fa-whatsapp"></i></button>
                             <button class="act-btn btn-del" onclick="deleteTrack(${item.id})"><i class="fas fa-trash"></i></button>
                         </div>
-                    </div>`;
+                    </div>
+                `;
                 list.appendChild(div);
             });
         }
 
-        function downloadItem(id) {
-            const item = library.find(t => t.id === id);
-            if (!item) return;
-            const url = URL.createObjectURL(item.blob); 
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = item.name + "." + (item.blob.type.split('/')[1] || 'mp3');
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            showToast("Download iniciado!");
-        }
-
+        // --- 5. AÇÕES (Renomear, Deletar, Compartilhar) ---
         function promptRename(id) {
-            editingId = id; const item = library.find(t => t.id === id);
+            editingId = id; 
+            const item = library.find(t => t.id === id);
             document.getElementById('renameInput').value = item.name;
             openModal('renameModal');
         }
         document.getElementById('btnConfirmRename').onclick = () => {
             const n = document.getElementById('renameInput').value;
-            if(n) {
+            if(n && editingId && dbReady) {
                 const tx = db.transaction(['tracks'], 'readwrite');
                 tx.objectStore('tracks').get(editingId).onsuccess = e => {
                     const d = e.target.result; d.name = n;
                     tx.objectStore('tracks').put(d).onsuccess = () => { 
                         loadTracks(); closeModal('renameModal'); 
                         if(currentTrack && currentTrack.id === editingId) document.getElementById('studioName').innerText = n;
-                        showToast("Renomeado"); 
                     };
                 };
             }
@@ -408,57 +439,67 @@
 
         function deleteTrack(id) {
             if(confirm("Excluir permanentemente?")) {
-                if (playerInstance) { playerInstance.stop(); playerInstance.dispose(); playerInstance = null; updateBtn(false); }
-                if (audioBuffers[id]) { delete audioBuffers[id]; } 
-                
+                if(playerInstance) { playerInstance.stop(); updateBtn(false); }
+                delete audioBuffers[id];
                 const tx = db.transaction(['tracks'], 'readwrite');
-                tx.objectStore('tracks').delete(id).onsuccess = () => { showToast("Excluído!"); loadTracks(); };
+                tx.objectStore('tracks').delete(id).onsuccess = () => loadTracks();
             }
         }
 
         function shareItem(id) {
             const item = library.find(t => t.id === id);
-            if (!item) return;
+            if(!item) return;
+            
+            // Compartilhamento Nativo (WhatsApp)
             if(navigator.canShare && navigator.share) {
-                const filename = item.name + ".wav"; 
-                const f = new File([item.blob], filename, {type: item.blob.type || "audio/mpeg"});
-                navigator.share({files: [f], title: item.name}).catch(e => {
-                    showToast("Falha no envio. Baixe e envie manual.");
-                });
+                const f = new File([item.blob], item.name + ".wav", {type: "audio/wav"});
+                navigator.share({ files: [f], title: item.name })
+                    .catch(() => forceDownload(item)); // Fallback se cancelar
             } else {
-                showToast("Navegador não suporta. Baixe e envie.");
+                forceDownload(item); // Fallback se não suportar
             }
         }
-        
-        // --- STUDIO ---
+
+        function forceDownload(item) {
+            const url = URL.createObjectURL(item.blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = item.name + ".wav"; a.click();
+            URL.revokeObjectURL(url);
+            showToast("Salvo em Downloads.");
+        }
+
+        // --- 6. PLAYBACK (PREVIEW & STUDIO) ---
         async function previewBuffer(id, btn) {
-            if(!audioBuffers[id]) { showToast("Áudio indisponível."); return; }
+            if(!audioBuffers[id]) { showToast("Áudio não pronto."); return; }
             await Tone.start();
             
+            // Para anterior
             if(playerInstance) { playerInstance.stop(); playerInstance.dispose(); playerInstance = null; updateBtn(false); }
             document.querySelectorAll('.btn-play i').forEach(i=>i.className='fas fa-play');
-            
+
+            // Toca novo
             playerInstance = new Tone.Player(audioBuffers[id]).toDestination();
             playerInstance.start();
             btn.querySelector('i').className='fas fa-stop';
             
             playerInstance.onstop = () => {
                 btn.querySelector('i').className='fas fa-play';
-                playerInstance.dispose();
-                playerInstance = null;
+                playerInstance.dispose(); playerInstance = null;
             };
         }
 
         function loadStudio(id) {
             const buffer = audioBuffers[id];
-            if (!buffer) { showToast("Buffer não encontrado."); return; }
+            if (!buffer) { showToast("Erro no áudio."); return; }
             
             currentTrack = library.find(t => t.id === id);
             if(playerInstance) { playerInstance.stop(); playerInstance.dispose(); playerInstance = null; }
+            
             nav('studio');
             document.getElementById('studioName').innerText = currentTrack.name;
-            document.getElementById('studioStatus').innerText = "Carregando...";
-            setupEngine(buffer); 
+            document.getElementById('studioStatus').innerText = "Carregando motor...";
+            
+            setupEngine(buffer);
         }
 
         async function setupEngine(buffer) {
@@ -471,12 +512,14 @@
             grainPlayer = new Tone.GrainPlayer({
                 buffer: buffer, grainSize:0.2, overlap:0.1, detune:0, playbackRate:1,
                 onload: () => { hideLoader(); document.getElementById('studioStatus').innerText="Pronto"; setTone(0, document.querySelector('.t-btn.orig')); },
-                onerror: (e) => { hideLoader(); showToast("Erro Buffer"); }
+                onerror: () => { hideLoader(); showToast("Erro engine."); }
             }).connect(filter);
+            
             grainPlayer.onstop = () => updateBtn(false);
-            playerInstance = grainPlayer; 
+            playerInstance = grainPlayer;
         }
 
+        // --- 7. MOTOR DE TOM (V12 LOGIC) ---
         function setTone(s, btn) {
             if(!grainPlayer) return;
             currentPitch = s;
@@ -484,6 +527,7 @@
             btn.classList.add('active');
             grainPlayer.detune = s*100; grainPlayer.playbackRate = 1;
             
+            // V12 Calibração
             if(s<0) { grainPlayer.grainSize=0.23; grainPlayer.overlap=0.11; filter.frequency.value=3500; }
             else if(s>0) { grainPlayer.grainSize=0.18; grainPlayer.overlap=0.09; filter.frequency.value=18000; }
             else { filter.frequency.value=20000; }
@@ -495,12 +539,14 @@
             if(playerInstance.state==='started') { playerInstance.stop(); updateBtn(false); }
             else { playerInstance.start(); updateBtn(true); }
         }
+
         function updateBtn(p) {
             const b = document.getElementById('btnPlay');
-            if(p) { b.innerHTML='<i class="fas fa-pause"></i> PAUSAR'; b.style.background="#ff1744"; }
-            else { b.innerHTML='<i class="fas fa-play"></i> OUVIR'; b.style.background="white"; }
+            if(p) { b.innerHTML='<i class="fas fa-pause"></i> PAUSAR'; b.style.background="#ff1744"; b.style.color="#fff"; }
+            else { b.innerHTML='<i class="fas fa-play"></i> OUVIR'; b.style.background="#fff"; b.style.color="#000"; }
         }
 
+        // --- 8. SALVAR/EXPORTAR ---
         function openSaveModal() {
             if(!grainPlayer) return;
             const s = currentPitch>0?"+":"";
@@ -510,7 +556,7 @@
 
         async function confirmSave() {
             const name = document.getElementById('saveInput').value;
-            closeModal('saveModal'); showLoader("Renderizando...");
+            closeModal('saveModal'); showLoader();
             
             setTimeout(async()=>{
                 try {
@@ -523,30 +569,32 @@
                     
                     const wav = bufferToWave(buf, 0, buf.length);
                     const blob = new Blob([wav], {type:'audio/wav'});
-                    await saveToDB(blob, name);
                     
-                    // Compartilhar se possível
+                    // Salva na lib
+                    await saveToDB(blob, name);
+                    loadTracks();
+
+                    // Tenta compartilhar
                     if(navigator.canShare && navigator.share) {
                          const f = new File([blob], name+".wav", {type: "audio/wav"});
                          navigator.share({files:[f], title:name}).catch(()=>{ forceDownload({blob:blob, name:name}); });
                     } else {
-                        // Fallback
-                        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name+".wav"; a.click();
-                        showToast("Salvo em Downloads.");
+                        forceDownload({blob:blob, name:name});
                     }
                     
-                    hideLoader(); loadTracks(); nav('library'); 
-                } catch(e) { hideLoader(); showToast("Erro renderização."); }
+                    hideLoader(); nav('library'); 
+                } catch(e) { hideLoader(); showToast("Erro ao renderizar."); }
             }, 100);
         }
 
         // --- UTILS ---
         function openModal(id) { document.getElementById(id).style.display='flex'; }
         function closeModal(id) { document.getElementById(id).style.display='none'; }
-        function showLoader(t="Lendo Arquivos...") { document.querySelector('#loader div:last-child').innerText=t; document.getElementById('loader').style.display='flex'; }
+        function showLoader() { document.getElementById('loader').style.display='flex'; }
         function hideLoader() { document.getElementById('loader').style.display='none'; }
         function showToast(m) { const t=document.getElementById('toast'); t.innerText=m; t.className="show"; setTimeout(()=>t.className="", 3000); }
-        
+
+        // WAV Encoder
         function bufferToWave(abuffer, offset, len) {
             let numOfChan = abuffer.numberOfChannels, length = len * numOfChan * 2 + 44, buffer = new ArrayBuffer(length), view = new DataView(buffer), channels = [], i, sample, pos = 0;
             setUint32(0x46464952); setUint32(length - 8); setUint32(0x45564157); setUint32(0x20746d66); setUint32(16); setUint16(1); setUint16(numOfChan);
