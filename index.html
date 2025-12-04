@@ -4,9 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="theme-color" content="#000000">
-    <meta name="description" content="Editor de áudio vocal simples via web">
-    <title>VocalStudio V1 (Fixed V2.0 Chunked)</title>
+    <meta name="description" content="Editor de áudio vocal simples via web - PWA Enabled">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>VocalStudio Pro (PWA)</title>
     
+    <!-- Placeholder para Manifest Dinâmico -->
+    <link rel="manifest" id="dynamic-manifest">
+
     <!-- Motor de Áudio -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -41,12 +46,28 @@
             padding: 15px;
             background: #0a0a0a;
             border-bottom: 1px solid #222;
-            display: flex; justify-content: center; align-items: center;
+            display: flex; justify-content: space-between; align-items: center;
             z-index: 10;
             flex-shrink: 0;
         }
+        .header-left { display: flex; align-items: center; }
         .logo { font-weight: 900; font-size: 1.2rem; letter-spacing: 1px; }
         .logo span { color: var(--primary); }
+
+        /* Botão PWA */
+        #btnInstall {
+            display: none; /* Só aparece se disponível */
+            background: var(--primary);
+            color: #000;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 800;
+            cursor: pointer;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.8; } 100% { opacity: 1; } }
 
         /* TABS */
         .tabs {
@@ -115,7 +136,7 @@
         .btn-rename { color: #ffab00; }
         .btn-del { color: var(--danger); }
 
-        /* --- ESTÚDIO --- */
+        /* --- ESTÚDIO (UPDATE) --- */
         .track-display {
             background: var(--card); padding: 20px; border-radius: 16px; border: 1px solid #333;
             text-align: center; margin-bottom: 25px;
@@ -124,16 +145,38 @@
         .track-title-large { font-size: 1.1rem; font-weight: bold; color: var(--primary); display: block; margin-bottom: 5px; }
         .track-status { font-size: 0.75rem; color: #666; }
 
-        .tone-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
+        /* NOVA GRADE DE TONS EXPANDIDA */
+        .tone-grid { 
+            display: grid; 
+            grid-template-columns: repeat(3, 1fr); 
+            gap: 10px; 
+            margin-bottom: 20px; 
+        }
         .t-btn {
-            background: #1a1a1a; border: 1px solid #333; color: #888; padding: 22px;
-            border-radius: 10px; cursor: pointer; font-size: 1.2rem;
+            background: #1a1a1a; border: 1px solid #333; color: #888; padding: 15px 5px;
+            border-radius: 8px; cursor: pointer; font-size: 1.1rem;
             display: flex; flex-direction: column; align-items: center; transition: 0.2s;
         }
-        .t-btn span { font-size: 0.6rem; margin-top: 6px; font-weight: bold; opacity: 0.7; }
+        .t-btn span { font-size: 0.6rem; margin-top: 4px; font-weight: bold; opacity: 0.7; }
         .t-btn.active { background: var(--primary); color: #000; border-color: var(--primary); transform: scale(1.02); font-weight: bold; }
-        .t-btn.orig { grid-column: span 2; }
+        .t-btn.orig { grid-column: span 3; background: #222; border: 1px solid #555; margin-bottom: 5px; }
         .t-btn.orig.active { background: white; color: black; }
+
+        /* CONTROLE FINO */
+        .fine-tune-box {
+            background: #151515; padding: 15px; border-radius: 10px; border: 1px solid #333; margin-top: 10px;
+        }
+        .fine-label { display: flex; justify-content: space-between; font-size: 0.8rem; color: #aaa; margin-bottom: 8px; }
+        input[type=range] {
+            width: 100%; -webkit-appearance: none; background: transparent;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none; height: 20px; width: 20px; border-radius: 50%;
+            background: var(--primary); cursor: pointer; margin-top: -8px;
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%; height: 4px; cursor: pointer; background: #444; border-radius: 2px;
+        }
 
         /* BARRA PLAYER */
         .player-bar {
@@ -209,8 +252,11 @@
     </div>
 
     <header>
-        <div class="logo">VOCAL<span>STUDIO</span> <span style="font-size:0.6rem; color:#666; border:1px solid #333; padding:2px 4px; border-radius:4px;">V2.0 CHUNK</span></div>
-        <div id="dbStatus" style="font-size:0.7rem; color:#444; margin-left: 10px;">Init...</div>
+        <div class="header-left">
+            <div class="logo">VOCAL<span>STUDIO</span> <span style="font-size:0.6rem; color:#666; border:1px solid #333; padding:2px 4px; border-radius:4px;">PRO PWA</span></div>
+            <div id="dbStatus" style="font-size:0.7rem; color:#444; margin-left: 10px;">Init...</div>
+        </div>
+        <button id="btnInstall" onclick="installApp()"><i class="fas fa-download"></i> INSTALAR APP</button>
     </header>
 
     <div class="tabs">
@@ -241,13 +287,32 @@
         </div>
 
         <div class="tone-grid">
-            <button class="t-btn" onclick="setTone(-2, this)">-2 <span>BAIXO</span></button>
-            <button class="t-btn" onclick="setTone(-1, this)">-1 <span>MEIO</span></button>
-            <button class="t-btn orig active" onclick="setTone(0, this)">ORIGINAL</button>
-            <button class="t-btn" onclick="setTone(1, this)">+1 <span>MEIO</span></button>
-            <button class="t-btn" onclick="setTone(2, this)">+2 <span>ALTO</span></button>
+            <!-- Botão Original esticado -->
+            <button class="t-btn orig active" onclick="setTone(0, this)">TOM ORIGINAL</button>
+            
+            <!-- Novos tons expandidos -->
+            <button class="t-btn" onclick="setTone(-4, this)">-4</button>
+            <button class="t-btn" onclick="setTone(-3, this)">-3</button>
+            <button class="t-btn" onclick="setTone(-2, this)">-2</button>
+            
+            <button class="t-btn" onclick="setTone(-1, this)">-1</button>
+            <button class="t-btn" onclick="setTone(1, this)">+1</button>
+            <button class="t-btn" onclick="setTone(2, this)">+2</button>
+            
+            <button class="t-btn" onclick="setTone(3, this)">+3</button>
+            <button class="t-btn" onclick="setTone(4, this)">+4</button>
+            <button class="t-btn" style="border-color:#333; color:#666;" onclick="showToast('Use Ajuste Fino')">...</button>
         </div>
         
+        <!-- Slider de Ajuste Fino -->
+        <div class="fine-tune-box">
+            <div class="fine-label">
+                <span>Ajuste Fino (Voz Robótica)</span>
+                <span id="fineVal">0 cents</span>
+            </div>
+            <input type="range" min="-100" max="100" value="0" step="1" id="fineSlider" oninput="updateFineTune(this.value)">
+        </div>
+
         <div style="text-align:center; font-size:0.7rem; color:#444; margin-top:20px;">
             Engine V2.0: Renderização por Fatias (Anti-Crash)
         </div>
@@ -263,6 +328,51 @@
     <div id="toast">Aviso</div>
 
     <script>
+        // --- 0. PWA BOOTSTRAP (HACKER MODE) ---
+        // Cria o manifest dinamicamente para permitir instalação
+        function initPWA() {
+            const manifest = {
+                "name": "VocalStudio",
+                "short_name": "VocalStudio",
+                "start_url": ".",
+                "display": "standalone",
+                "background_color": "#000000",
+                "theme_color": "#000000",
+                "orientation": "portrait",
+                "icons": [
+                    {
+                        "src": "https://cdn-icons-png.flaticon.com/512/3039/3039462.png",
+                        "sizes": "512x512",
+                        "type": "image/png"
+                    }
+                ]
+            };
+            const stringManifest = JSON.stringify(manifest);
+            const blob = new Blob([stringManifest], {type: 'application/json'});
+            const manifestURL = URL.createObjectURL(blob);
+            document.querySelector('#dynamic-manifest').setAttribute('href', manifestURL);
+        }
+        initPWA();
+
+        // Lógica de Instalação (Chrome/Android)
+        let deferredPrompt;
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            document.getElementById('btnInstall').style.display = 'block';
+        });
+
+        async function installApp() {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                const { outcome } = await deferredPrompt.userChoice;
+                if (outcome === 'accepted') {
+                    deferredPrompt = null;
+                    document.getElementById('btnInstall').style.display = 'none';
+                }
+            }
+        }
+
         // --- 1. BANCO DE DADOS ---
         let db;
         let dbReady = false;
@@ -300,7 +410,8 @@
         let playerInstance = null;
         let filter = null;
         let limiter = null;
-        let currentPitch = 0;
+        let currentPitch = 0; // Semitones (Inteiros)
+        let currentFine = 0;  // Cents (Ajuste fino)
         let currentAudioBuffer = null;
 
         // Configuração de Chunking
@@ -502,24 +613,46 @@
 
             hideLoader();
             document.getElementById('studioStatus').innerText = "Motor Pronto. Duração: " + buffer.duration.toFixed(1) + "s";
+            
+            // Reset controles
+            currentPitch = 0;
+            currentFine = 0;
+            document.getElementById('fineSlider').value = 0;
+            updateFineTune(0);
             setTone(0, document.querySelector('.t-btn.orig'));
         }
 
-        function setTone(s, btn) {
+        // Lógica de Tons Combinada (Inteiro + Fino)
+        function setTone(semitones, btn) {
             if(!grainPlayer) return;
-            currentPitch = s;
+            currentPitch = semitones;
             
-            document.querySelectorAll('.t-btn').forEach(b => b.className='t-btn'+(b.innerText.includes('ORIGINAL')?' orig':''));
-            btn.classList.add('active');
+            // UI Update
+            document.querySelectorAll('.t-btn').forEach(b => b.classList.remove('active'));
+            if(btn) btn.classList.add('active');
             
-            grainPlayer.detune = s * 100;
-            
-            // Otimização V2: Ajustes de Granularidade
-            if(s < 0) { 
+            applyPitch();
+        }
+
+        function updateFineTune(val) {
+            currentFine = parseInt(val);
+            document.getElementById('fineVal').innerText = (currentFine > 0 ? "+" : "") + currentFine + " cents";
+            applyPitch();
+        }
+
+        function applyPitch() {
+            if(!grainPlayer) return;
+
+            // Fórmula: (Semitons * 100) + Cents
+            const totalCents = (currentPitch * 100) + currentFine;
+            grainPlayer.detune = totalCents;
+
+            // Otimização de Grain baseada no Pitch Total
+            if(totalCents < 0) { 
                 grainPlayer.grainSize = 0.25; 
                 grainPlayer.overlap = 0.12; 
                 filter.frequency.value = 3500; 
-            } else if(s > 0) { 
+            } else if(totalCents > 0) { 
                 grainPlayer.grainSize = 0.15; 
                 grainPlayer.overlap = 0.08; 
                 filter.frequency.value = 18000; 
@@ -562,7 +695,8 @@
         function openSaveModal() {
             if(!grainPlayer) return;
             const s = currentPitch > 0 ? "+" : "";
-            document.getElementById('saveInput').value = `${currentTrack.name} (${s}${currentPitch})`;
+            const f = currentFine !== 0 ? ` (${currentFine}c)` : "";
+            document.getElementById('saveInput').value = `${currentTrack.name} (${s}${currentPitch})${f}`;
             openModal('saveModal');
         }
 
@@ -571,7 +705,7 @@
             closeModal('saveModal');
             stopAllAudio();
 
-            if(currentPitch === 0) {
+            if(currentPitch === 0 && currentFine === 0) {
                 // Atalho para original
                 showLoader("Salvando original...");
                 setTimeout(() => finishExport(bufferToWave(currentAudioBuffer), name), 100);
@@ -583,10 +717,12 @@
             const renderedBuffers = [];
 
             // Parâmetros para replicar no Offline Context
+            const totalCents = (currentPitch * 100) + currentFine;
+            
             const p = {
                 grainSize: grainPlayer.grainSize,
                 overlap: grainPlayer.overlap,
-                detune: currentPitch * 100,
+                detune: totalCents,
                 freq: filter.frequency.value
             };
 
