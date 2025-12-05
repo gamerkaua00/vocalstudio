@@ -25,6 +25,7 @@
             --text: #ffffff;
             --text-sec: #888888;
             --danger: #ff1744;
+            --folder: #ff9100; /* Cor para pasta */
         }
 
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; outline: none; }
@@ -91,6 +92,7 @@
         .import-box {
             background: var(--card); border-radius: 12px; padding: 20px;
             text-align: center; border: 1px solid #333; margin-bottom: 20px;
+            display: flex; flex-direction: column; gap: 10px;
         }
         
         .btn-add-music {
@@ -102,6 +104,14 @@
             transition: transform 0.1s;
         }
         .btn-add-music:active { transform: scale(0.98); }
+
+        .btn-link-folder {
+            width: 100%; background: #222;
+            color: var(--folder); border: 1px solid var(--folder); padding: 12px; border-radius: 10px;
+            font-weight: 700; font-size: 0.9rem; cursor: pointer;
+            display: flex; align-items: center; justify-content: center; gap: 10px;
+        }
+        .btn-link-folder:hover { background: #2a2a2a; }
         
         input[type="file"] { display: none; }
 
@@ -270,10 +280,16 @@
             <button class="btn-add-music" onclick="triggerImport()">
                 <i class="fas fa-plus-circle"></i> ADICIONAR MÚSICAS
             </button>
+            <button class="btn-link-folder" onclick="selectFolder()">
+                <i class="fas fa-folder-open"></i> VINCULAR PASTA MÚSICA
+            </button>
             <div style="font-size:0.7rem; color:#666; margin-top:10px;">
-                Selecione arquivos de áudio (MP3, WAV, AAC).
+                Selecione arquivos manualmente ou vincule uma pasta.
             </div>
+            <!-- Input Padrão -->
             <input type="file" id="fileInput" accept="audio/*" multiple onchange="handleImport(this.files)">
+            <!-- Input Legado para Pastas (Fallback de Segurança) -->
+            <input type="file" id="legacyFolderInput" webkitdirectory directory multiple style="display:none" onchange="handleImport(this.files)">
         </div>
 
         <div id="libList" class="lib-list"></div>
@@ -373,18 +389,25 @@
             }
         }
 
-        // --- 1. BANCO DE DADOS ---
+        // --- 1. BANCO DE DADOS ATUALIZADO (V2) ---
         let db;
         let dbReady = false;
         const DB_NAME = "VocalStudioV1_Fixed";
+        const DB_VERSION = 2; // Incrementado para adicionar store de settings
 
         function initDB() {
             return new Promise((resolve) => {
-                const req = indexedDB.open(DB_NAME, 1);
+                const req = indexedDB.open(DB_NAME, DB_VERSION);
+                
                 req.onupgradeneeded = e => {
                     db = e.target.result;
+                    // Store de Tracks (Músicas)
                     if(!db.objectStoreNames.contains('tracks')) {
                         db.createObjectStore('tracks', {keyPath:'id', autoIncrement:true});
+                    }
+                    // Store de Configurações (Handle da Pasta)
+                    if(!db.objectStoreNames.contains('settings')) {
+                        db.createObjectStore('settings');
                     }
                 };
                 req.onsuccess = e => { 
@@ -393,6 +416,7 @@
                     document.getElementById('dbStatus').innerText = "DB OK";
                     document.getElementById('dbStatus').style.color = "var(--primary)";
                     loadTracks(); 
+                    checkAutoScanFolder(); // Verifica se tem pasta salva ao iniciar
                     resolve();
                 };
                 req.onerror = () => { 
@@ -445,7 +469,7 @@
             document.querySelectorAll('.btn-play i').forEach(i=>i.className='fas fa-play');
         }
 
-        // --- 3. IMPORTAÇÃO ---
+        // --- 3. IMPORTAÇÃO MANUAL E AUTOMÁTICA ---
         async function triggerImport() {
             await Tone.start();
             document.getElementById('fileInput').click();
@@ -457,10 +481,15 @@
             const filesArray = Array.from(files);
             
             for (const file of filesArray) {
-                if (file.size > 100) {
+                // Filtro mais robusto de extensão para evitar arquivos indesejados ao puxar pastas
+                if (file.name.match(/\.(mp3|wav|aac|ogg|m4a)$/i) && file.size > 100) {
                     try {
                         const name = file.name.replace(/\.[^/.]+$/, "");
-                        await saveToDB(file, name);
+                        // Verifica duplicação
+                        const exists = library.find(t => t.name === name);
+                        if (!exists) {
+                            await saveToDB(file, name);
+                        }
                     } catch(e) {
                         console.error("Erro ao salvar:", file.name);
                     }
@@ -470,7 +499,125 @@
             hideLoader(); 
             showToast("Importação concluída!");
             document.getElementById('fileInput').value = '';
+            document.getElementById('legacyFolderInput').value = ''; // Limpa também o input de pasta
         }
+
+        // --- NOVA FUNCIONALIDADE: FILE SYSTEM ACCESS API COM FALLBACK ---
+        async function selectFolder() {
+            // Tenta usar a API moderna primeiro
+            if ('showDirectoryPicker' in window) {
+                try {
+                    const dirHandle = await window.showDirectoryPicker();
+                    await saveFolderHandle(dirHandle);
+                    await scanDirectory(dirHandle);
+                    showToast("Pasta vinculada e escaneada!");
+                    return; // Sucesso, sai da função
+                } catch (err) {
+                    // Trata Erro de Segurança (Iframe/Cross-origin) ou API bloqueada
+                    if (err.name === 'SecurityError' || err.code === 18) {
+                        console.warn("FSA API bloqueada pelo navegador, ativando modo legado.");
+                        // Não retorna, deixa cair no fallback abaixo
+                    } else if (err.name === 'AbortError') {
+                        return; // Usuário cancelou a seleção
+                    } else {
+                        console.error("Erro desconhecido na API:", err);
+                        // Continua para fallback por segurança
+                    }
+                }
+            }
+            
+            // FALLBACK: Input Legacy (webkitdirectory)
+            // Isso funciona em iframes onde a API nova é bloqueada
+            document.getElementById('legacyFolderInput').click();
+        }
+
+        async function saveFolderHandle(handle) {
+            return new Promise(resolve => {
+                const tx = db.transaction(['settings'], 'readwrite');
+                tx.objectStore('settings').put(handle, 'musicFolderHandle');
+                tx.oncomplete = () => resolve();
+            });
+        }
+
+        async function getFolderHandle() {
+            return new Promise(resolve => {
+                const tx = db.transaction(['settings'], 'readonly');
+                const req = tx.objectStore('settings').get('musicFolderHandle');
+                req.onsuccess = e => resolve(e.target.result);
+                req.onerror = () => resolve(null);
+            });
+        }
+
+        // Verifica permissão ao carregar
+        async function verifyPermission(fileHandle, readWrite) {
+            const options = {};
+            if (readWrite) { options.mode = 'readwrite'; }
+            // Checa se já tem permissão
+            if ((await fileHandle.queryPermission(options)) === 'granted') {
+                return true;
+            }
+            // Solicita permissão (precisa de gesto do usuário se não for no clique)
+            if ((await fileHandle.requestPermission(options)) === 'granted') {
+                return true;
+            }
+            return false;
+        }
+
+        async function checkAutoScanFolder() {
+            const handle = await getFolderHandle();
+            if (handle) {
+                console.log("Pasta vinculada encontrada. Tentando escanear...");
+                try {
+                    // Browser pode bloquear requestPermission sem gesto
+                    // Em iframes restritos, isso vai falhar silenciosamente ou gerar erro
+                    const hasPerm = await verifyPermission(handle, false);
+                    if(hasPerm) {
+                        await scanDirectory(handle, true); // true = silencioso
+                    } else {
+                        showToast("Reconecte a pasta para sincronizar.");
+                    }
+                } catch(e) {
+                    console.log("Auto-scan não permitido neste contexto.");
+                }
+            }
+        }
+
+        async function scanDirectory(dirHandle, silent = false) {
+            if(!silent) showLoader("Varrendo pasta...");
+            
+            try {
+                for await (const entry of dirHandle.values()) {
+                    if (entry.kind === 'file') {
+                        // Verifica extensão
+                        if(entry.name.match(/\.(mp3|wav|aac|ogg|m4a)$/i)) {
+                            const file = await entry.getFile();
+                            const name = file.name.replace(/\.[^/.]+$/, "");
+                            
+                            // Check duplicação simples por nome
+                            const exists = library.find(t => t.name === name);
+                            if(!exists) {
+                                await saveToDB(file, name);
+                            }
+                        }
+                    } else if (entry.kind === 'directory') {
+                        // Recursivo simples para subpastas
+                        await scanDirectory(entry, true);
+                    }
+                }
+                if(!silent) {
+                    await loadTracks();
+                    hideLoader();
+                } else {
+                    // Refresh silencioso
+                    loadTracks();
+                }
+            } catch (err) {
+                console.error("Erro no scan:", err);
+                if(!silent) hideLoader();
+            }
+        }
+
+        // --- FIM DA NOVA LÓGICA ---
 
         function saveToDB(blob, name) {
             return new Promise(resolve => {
