@@ -246,6 +246,14 @@
         .m-confirm { background: var(--primary); color: black; }
         .m-cancel { background: #333; color: #ccc; }
 
+        /* Estilo para Player Nativo de Cast */
+        #castPlayerNative {
+            width: 100%;
+            margin: 15px 0;
+            border-radius: 8px;
+            outline: none;
+        }
+
         #loader { z-index: 4000; flex-direction: column; }
         .spinner { width: 40px; height: 40px; border: 4px solid #222; border-top-color: var(--primary); border-radius: 50%; animation: spin 1s infinite linear; }
         @keyframes spin { to { transform: rotate(360deg); } }
@@ -262,11 +270,8 @@
 </head>
 <body>
 
-    <!-- ELEMENTO DE CAST OCULTO (Ponte para TV) -->
-    <audio id="castAudio" style="display:none;" controls></audio>
     <!-- CANVAS PARA VISUALIZER -->
     <canvas id="visualizerCanvas" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; z-index: -1; opacity: 0.2; pointer-events: none;"></canvas>
-
 
     <!-- MODAL RENOMEAR -->
     <div id="renameModal" class="overlay">
@@ -288,6 +293,21 @@
             <div class="modal-btns">
                 <button class="m-btn m-cancel" onclick="closeModal('saveModal')">Cancelar</button>
                 <button class="m-btn m-confirm" onclick="confirmSave()">Salvar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE TRANSMISSÃO (CAST) -->
+    <div id="castModal" class="overlay">
+        <div class="modal-box" style="background:#222;">
+            <h3 style="margin:0; color:var(--cast)"><i class="fas fa-broadcast-tower"></i> Transmissão</h3>
+            <p style="font-size:0.8rem; color:#aaa; margin-top:10px;">
+                Use o player nativo abaixo para transmitir via Bluetooth, AirPlay ou Espelhamento. <br>
+                <span style="color:var(--danger)">Atenção: Efeitos de voz não são aplicados na transmissão direta. Salve a edição primeiro se quiser os efeitos.</span>
+            </p>
+            <audio id="castPlayerNative" controls></audio>
+            <div class="modal-btns">
+                <button class="m-btn m-cancel" onclick="closeCastModal()">Fechar</button>
             </div>
         </div>
     </div>
@@ -362,14 +382,14 @@
         </div>
 
         <div style="text-align:center; font-size:0.7rem; color:#444; margin-top:20px;">
-            Engine V2.1: Renderização por Fatias + Remote Cast
+            Engine V2.2: Transporte Sincronizado (Resume Fix)
         </div>
     </div>
 
     <!-- PLAYER BAR -->
     <div class="player-bar">
         <button class="p-btn btn-main-play" id="btnPlay" onclick="togglePlay()"><i class="fas fa-play"></i> OUVIR</button>
-        <button class="p-btn btn-main-cast" id="btnCast" onclick="toggleCast()"><i class="fas fa-broadcast-tower"></i></button>
+        <button class="p-btn btn-main-cast" id="btnCast" onclick="openCastModal()"><i class="fas fa-broadcast-tower"></i></button>
         <button class="p-btn btn-main-save" id="btnSave" onclick="openSaveModal()"><i class="fas fa-share-alt"></i> ENVIAR</button>
     </div>
 
@@ -492,23 +512,23 @@
         }
 
         function stopAllAudio() {
-            // Parar Tone.js
+            // Parar Tone.Transport (Engine de Resumo)
+            Tone.Transport.pause();
+            
+            // Parar Tone.js Players
             if(playerInstance) {
                 if(playerInstance.state === 'started') playerInstance.stop();
                 playerInstance.dispose();
                 playerInstance = null;
             }
             if(grainPlayer) {
+                // Não damos stop() direto aqui pois usamos Transport, mas por segurança para limpeza:
                 if(grainPlayer.state === 'started') grainPlayer.stop();
             }
             
-            // Parar Cast Audio
-            const castAudio = document.getElementById('castAudio');
-            if(!castAudio.paused) {
-                castAudio.pause();
-                // Não limpamos o src imediatamente para manter a conexão se estiver pausado, 
-                // mas aqui queremos resetar o estado visual.
-            }
+            // Parar Cast Native Player
+            const nativeP = document.getElementById('castPlayerNative');
+            nativeP.pause();
             
             updateBtn(false);
             document.querySelectorAll('.btn-play i').forEach(i=>i.className='fas fa-play');
@@ -716,7 +736,7 @@
             stopAllAudio();
             const item = library.find(t => t.id === id);
             if(!item) return;
-            currentTrack = item; // Para o Cast saber o que tocar
+            currentTrack = item; 
             
             showLoader("Carregando...");
             btn.querySelector('i').className = 'fas fa-spinner fa-spin';
@@ -736,7 +756,7 @@
                 
                 hideLoader();
                 playerInstance.start();
-                updateMediaSession(item.name); // Atualiza controles da tela de bloqueio
+                updateMediaSession(item.name); 
                 btn.querySelector('i').className = 'fas fa-stop';
             } catch(e) {
                 hideLoader();
@@ -817,6 +837,9 @@
         }
 
         function setupEngine(buffer) {
+            // Limpeza
+            Tone.Transport.stop();
+            Tone.Transport.cancel();
             if(grainPlayer) grainPlayer.dispose();
             if(filter) filter.dispose();
             if(limiter) limiter.dispose();
@@ -830,10 +853,20 @@
             grainPlayer.grainSize = 0.2;
             grainPlayer.overlap = 0.1;
             
+            // CORREÇÃO: Sync com Transport para permitir Pause/Resume
+            grainPlayer.sync().start(0); 
+
             // Conectar Visualizer
             connectAnalyser(grainPlayer);
 
-            grainPlayer.onstop = () => updateBtn(false);
+            // Quando o audio acabar, parar o botão
+            Tone.Transport.on('stop', () => updateBtn(false));
+            
+            // Como grainPlayer em loop infinito se não parar, agendamos o stop
+            Tone.Transport.scheduleOnce(() => {
+                Tone.Transport.pause();
+                updateBtn(false);
+            }, buffer.duration);
 
             hideLoader();
             document.getElementById('studioStatus').innerText = "Motor Pronto. Duração: " + buffer.duration.toFixed(1) + "s";
@@ -888,11 +921,12 @@
             if(!grainPlayer) { showToast("Carregue uma música."); return; }
             await Tone.start();
             
-            if(grainPlayer.state === 'started') {
-                grainPlayer.stop();
+            // CORREÇÃO: Usar Transport.state em vez de grainPlayer.state
+            if(Tone.Transport.state === 'started') {
+                Tone.Transport.pause(); // Pause mantém a posição
                 updateBtn(false);
             } else {
-                grainPlayer.start();
+                Tone.Transport.start(); // Start continua de onde parou
                 updateBtn(true);
                 updateMediaSession(currentTrack.name);
             }
@@ -911,62 +945,26 @@
             }
         }
 
-        // --- NOVO: LÓGICA DE CASTING (TRANSMISSÃO) ---
-        async function toggleCast() {
-            const castBtn = document.getElementById('btnCast');
-            const castAudio = document.getElementById('castAudio');
-
+        // --- LÓGICA DE CASTING (PLAYER NATIVO) ---
+        function openCastModal() {
             if (!currentTrack) {
                 showToast("Selecione uma música primeiro.");
                 return;
             }
+            stopAllAudio(); // Para o audio processado
 
-            // Se já estiver tocando localmente, pausa
-            stopAllAudio(); 
-
-            // Criar URL temporária para o Blob atual
-            // IMPORTANTE: Cast nativo só funciona com URLs limpas, não stream de Web Audio.
-            // Por isso transmitimos o arquivo.
+            // Cria URL para o player nativo
             const blobUrl = URL.createObjectURL(currentTrack.blob);
-            castAudio.src = blobUrl;
-
-            // Feedback Visual
-            showToast("Procurando dispositivos...");
+            const nativeP = document.getElementById('castPlayerNative');
+            nativeP.src = blobUrl;
             
-            try {
-                // Tenta usar a API Remote Playback (Chrome/Android)
-                if (castAudio.remote) {
-                    castAudio.remote.watchAvailability((available) => {
-                        if (available) {
-                            castAudio.remote.prompt().then(() => {
-                                castBtn.classList.add('casting');
-                            }).catch(err => {
-                                // Usuário cancelou
-                                console.log("Cast cancelado ou falhou:", err);
-                            });
-                        } else {
-                            // Se a API diz que não tem, tentamos tocar mesmo assim para disparar AirPlay no iOS
-                            castAudio.play();
-                            showToast("Use o menu de AirPlay/Cast do sistema.");
-                        }
-                    });
-                } else {
-                    // Fallback para iOS/Safari (AirPlay nativo aparece nos controles)
-                    castAudio.play();
-                    showToast("Controles de transmissão ativados.");
-                }
+            openModal('castModal');
+        }
 
-                // Aviso de limitação técnica
-                if(currentPitch !== 0 || currentFine !== 0) {
-                    setTimeout(() => {
-                        alert("Nota: Para transmitir com as alterações de voz, salve a edição primeiro e transmita o arquivo salvo.");
-                    }, 1000);
-                }
-
-            } catch (e) {
-                console.error(e);
-                showToast("Erro ao iniciar transmissão.");
-            }
+        function closeCastModal() {
+            const nativeP = document.getElementById('castPlayerNative');
+            nativeP.pause();
+            closeModal('castModal');
         }
 
         // Media Session API (Controles de Bloqueio)
@@ -978,11 +976,10 @@
                     artwork: [{ src: 'https://cdn-icons-png.flaticon.com/512/3039/3039462.png', sizes: '512x512', type: 'image/png' }]
                 });
                 navigator.mediaSession.setActionHandler('play', () => { 
-                    if(grainPlayer) { grainPlayer.start(); updateBtn(true); }
-                    else if(playerInstance) playerInstance.start();
+                    if(grainPlayer) { Tone.Transport.start(); updateBtn(true); }
                 });
                 navigator.mediaSession.setActionHandler('pause', () => { 
-                    stopAllAudio();
+                    Tone.Transport.pause(); updateBtn(false);
                 });
             }
         }
