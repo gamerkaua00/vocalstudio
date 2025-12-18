@@ -7,7 +7,7 @@
     <meta name="description" content="Editor de áudio vocal simples via web - PWA Enabled">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>VocalStudio Pro (PWA)</title>
+    <title>VocalStudio Pro (Cast Edition)</title>
     
     <!-- Placeholder para Manifest Dinâmico -->
     <link rel="manifest" id="dynamic-manifest">
@@ -22,6 +22,7 @@
             --card: #121212;
             --primary: #00e676; /* Verde Destaque */
             --accent: #651fff; /* Roxo Marca */
+            --cast: #2979ff; /* Azul para Cast */
             --text: #ffffff;
             --text-sec: #888888;
             --danger: #ff1744;
@@ -50,10 +51,19 @@
             display: flex; justify-content: space-between; align-items: center;
             z-index: 10;
             flex-shrink: 0;
+            position: relative;
         }
         .header-left { display: flex; align-items: center; }
         .logo { font-weight: 900; font-size: 1.2rem; letter-spacing: 1px; }
         .logo span { color: var(--primary); }
+
+        /* VISUALIZER */
+        #visualizer {
+            position: absolute;
+            bottom: 0; left: 0;
+            width: 100%; height: 2px;
+            background: rgba(255,255,255,0.1);
+        }
 
         /* Botão PWA */
         #btnInstall {
@@ -192,16 +202,31 @@
         .player-bar {
             position: fixed; bottom: 0; left: 0; width: 100%; height: 85px;
             background: rgba(15,15,15,0.98); border-top: 1px solid #333;
-            display: flex; align-items: center; padding: 0 20px; gap: 15px; z-index: 200;
+            display: flex; align-items: center; padding: 0 15px; gap: 10px; z-index: 200;
             padding-bottom: env(safe-area-inset-bottom); backdrop-filter: blur(10px);
         }
         .p-btn {
-            flex: 1; height: 50px; border-radius: 10px; border: none; font-weight: 900;
+            height: 50px; border-radius: 10px; border: none; font-weight: 900;
             font-size: 1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;
         }
-        .btn-main-play { background: white; color: black; }
-        .btn-main-save { background: #222; color: #555; pointer-events: none; border: 1px solid #333; }
+        .btn-main-play { flex: 2; background: white; color: black; }
+        .btn-main-save { flex: 1; background: #222; color: #555; pointer-events: none; border: 1px solid #333; }
         .btn-main-save.ready { background: var(--primary); color: #000; pointer-events: auto; border: none; }
+        
+        /* Botão Cast */
+        .btn-main-cast {
+            flex: 0 0 50px;
+            background: #1a1a1a;
+            color: var(--cast);
+            border: 1px solid #333;
+            font-size: 1.2rem;
+            transition: all 0.3s ease;
+        }
+        .btn-main-cast.casting {
+            background: var(--cast);
+            color: white;
+            box-shadow: 0 0 10px rgba(41, 121, 255, 0.5);
+        }
 
         /* LOADER & MODALS */
         .overlay {
@@ -237,6 +262,12 @@
 </head>
 <body>
 
+    <!-- ELEMENTO DE CAST OCULTO (Ponte para TV) -->
+    <audio id="castAudio" style="display:none;" controls></audio>
+    <!-- CANVAS PARA VISUALIZER -->
+    <canvas id="visualizerCanvas" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; z-index: -1; opacity: 0.2; pointer-events: none;"></canvas>
+
+
     <!-- MODAL RENOMEAR -->
     <div id="renameModal" class="overlay">
         <div class="modal-box">
@@ -267,6 +298,7 @@
             <div id="dbStatus" style="font-size:0.7rem; color:#444; margin-left: 10px;">Init...</div>
         </div>
         <button id="btnInstall" onclick="installApp()"><i class="fas fa-download"></i> INSTALAR APP</button>
+        <div id="visualizer"></div>
     </header>
 
     <div class="tabs">
@@ -330,13 +362,14 @@
         </div>
 
         <div style="text-align:center; font-size:0.7rem; color:#444; margin-top:20px;">
-            Engine V2.0: Renderização por Fatias (Anti-Crash)
+            Engine V2.1: Renderização por Fatias + Remote Cast
         </div>
     </div>
 
     <!-- PLAYER BAR -->
     <div class="player-bar">
         <button class="p-btn btn-main-play" id="btnPlay" onclick="togglePlay()"><i class="fas fa-play"></i> OUVIR</button>
+        <button class="p-btn btn-main-cast" id="btnCast" onclick="toggleCast()"><i class="fas fa-broadcast-tower"></i></button>
         <button class="p-btn btn-main-save" id="btnSave" onclick="openSaveModal()"><i class="fas fa-share-alt"></i> ENVIAR</button>
     </div>
 
@@ -345,7 +378,6 @@
 
     <script>
         // --- 0. PWA BOOTSTRAP (HACKER MODE) ---
-        // Cria o manifest dinamicamente para permitir instalação
         function initPWA() {
             const manifest = {
                 "name": "VocalStudio",
@@ -393,7 +425,7 @@
         let db;
         let dbReady = false;
         const DB_NAME = "VocalStudioV1_Fixed";
-        const DB_VERSION = 2; // Incrementado para adicionar store de settings
+        const DB_VERSION = 2;
 
         function initDB() {
             return new Promise((resolve) => {
@@ -401,11 +433,9 @@
                 
                 req.onupgradeneeded = e => {
                     db = e.target.result;
-                    // Store de Tracks (Músicas)
                     if(!db.objectStoreNames.contains('tracks')) {
                         db.createObjectStore('tracks', {keyPath:'id', autoIncrement:true});
                     }
-                    // Store de Configurações (Handle da Pasta)
                     if(!db.objectStoreNames.contains('settings')) {
                         db.createObjectStore('settings');
                     }
@@ -416,7 +446,7 @@
                     document.getElementById('dbStatus').innerText = "DB OK";
                     document.getElementById('dbStatus').style.color = "var(--primary)";
                     loadTracks(); 
-                    checkAutoScanFolder(); // Verifica se tem pasta salva ao iniciar
+                    checkAutoScanFolder();
                     resolve();
                 };
                 req.onerror = () => { 
@@ -434,15 +464,20 @@
         let playerInstance = null;
         let filter = null;
         let limiter = null;
-        let currentPitch = 0; // Semitones (Inteiros)
-        let currentFine = 0;  // Cents (Ajuste fino)
+        let currentPitch = 0;
+        let currentFine = 0;
         let currentAudioBuffer = null;
+        
+        // Visualizer
+        let analyser = null;
+        let visualizerContext = null;
+        let isVisualizerRunning = false;
 
-        // Configuração de Chunking
-        const CHUNK_DURATION = 15; // Segundos por fatia (seguro para mobile)
+        const CHUNK_DURATION = 15;
 
         window.onload = async () => {
             await initDB();
+            initVisualizer();
         };
 
         function nav(s) {
@@ -457,6 +492,7 @@
         }
 
         function stopAllAudio() {
+            // Parar Tone.js
             if(playerInstance) {
                 if(playerInstance.state === 'started') playerInstance.stop();
                 playerInstance.dispose();
@@ -465,6 +501,15 @@
             if(grainPlayer) {
                 if(grainPlayer.state === 'started') grainPlayer.stop();
             }
+            
+            // Parar Cast Audio
+            const castAudio = document.getElementById('castAudio');
+            if(!castAudio.paused) {
+                castAudio.pause();
+                // Não limpamos o src imediatamente para manter a conexão se estiver pausado, 
+                // mas aqui queremos resetar o estado visual.
+            }
+            
             updateBtn(false);
             document.querySelectorAll('.btn-play i').forEach(i=>i.className='fas fa-play');
         }
@@ -481,11 +526,9 @@
             const filesArray = Array.from(files);
             
             for (const file of filesArray) {
-                // Filtro mais robusto de extensão para evitar arquivos indesejados ao puxar pastas
                 if (file.name.match(/\.(mp3|wav|aac|ogg|m4a)$/i) && file.size > 100) {
                     try {
                         const name = file.name.replace(/\.[^/.]+$/, "");
-                        // Verifica duplicação
                         const exists = library.find(t => t.name === name);
                         if (!exists) {
                             await saveToDB(file, name);
@@ -499,35 +542,25 @@
             hideLoader(); 
             showToast("Importação concluída!");
             document.getElementById('fileInput').value = '';
-            document.getElementById('legacyFolderInput').value = ''; // Limpa também o input de pasta
+            document.getElementById('legacyFolderInput').value = '';
         }
 
-        // --- NOVA FUNCIONALIDADE: FILE SYSTEM ACCESS API COM FALLBACK ---
         async function selectFolder() {
-            // Tenta usar a API moderna primeiro
             if ('showDirectoryPicker' in window) {
                 try {
                     const dirHandle = await window.showDirectoryPicker();
                     await saveFolderHandle(dirHandle);
                     await scanDirectory(dirHandle);
                     showToast("Pasta vinculada e escaneada!");
-                    return; // Sucesso, sai da função
+                    return;
                 } catch (err) {
-                    // Trata Erro de Segurança (Iframe/Cross-origin) ou API bloqueada
                     if (err.name === 'SecurityError' || err.code === 18) {
                         console.warn("FSA API bloqueada pelo navegador, ativando modo legado.");
-                        // Não retorna, deixa cair no fallback abaixo
                     } else if (err.name === 'AbortError') {
-                        return; // Usuário cancelou a seleção
-                    } else {
-                        console.error("Erro desconhecido na API:", err);
-                        // Continua para fallback por segurança
+                        return;
                     }
                 }
             }
-            
-            // FALLBACK: Input Legacy (webkitdirectory)
-            // Isso funciona em iframes onde a API nova é bloqueada
             document.getElementById('legacyFolderInput').click();
         }
 
@@ -548,15 +581,12 @@
             });
         }
 
-        // Verifica permissão ao carregar
         async function verifyPermission(fileHandle, readWrite) {
             const options = {};
             if (readWrite) { options.mode = 'readwrite'; }
-            // Checa se já tem permissão
             if ((await fileHandle.queryPermission(options)) === 'granted') {
                 return true;
             }
-            // Solicita permissão (precisa de gesto do usuário se não for no clique)
             if ((await fileHandle.requestPermission(options)) === 'granted') {
                 return true;
             }
@@ -566,13 +596,10 @@
         async function checkAutoScanFolder() {
             const handle = await getFolderHandle();
             if (handle) {
-                console.log("Pasta vinculada encontrada. Tentando escanear...");
                 try {
-                    // Browser pode bloquear requestPermission sem gesto
-                    // Em iframes restritos, isso vai falhar silenciosamente ou gerar erro
                     const hasPerm = await verifyPermission(handle, false);
                     if(hasPerm) {
-                        await scanDirectory(handle, true); // true = silencioso
+                        await scanDirectory(handle, true);
                     } else {
                         showToast("Reconecte a pasta para sincronizar.");
                     }
@@ -588,19 +615,15 @@
             try {
                 for await (const entry of dirHandle.values()) {
                     if (entry.kind === 'file') {
-                        // Verifica extensão
                         if(entry.name.match(/\.(mp3|wav|aac|ogg|m4a)$/i)) {
                             const file = await entry.getFile();
                             const name = file.name.replace(/\.[^/.]+$/, "");
-                            
-                            // Check duplicação simples por nome
                             const exists = library.find(t => t.name === name);
                             if(!exists) {
                                 await saveToDB(file, name);
                             }
                         }
                     } else if (entry.kind === 'directory') {
-                        // Recursivo simples para subpastas
                         await scanDirectory(entry, true);
                     }
                 }
@@ -608,7 +631,6 @@
                     await loadTracks();
                     hideLoader();
                 } else {
-                    // Refresh silencioso
                     loadTracks();
                 }
             } catch (err) {
@@ -616,8 +638,6 @@
                 if(!silent) hideLoader();
             }
         }
-
-        // --- FIM DA NOVA LÓGICA ---
 
         function saveToDB(blob, name) {
             return new Promise(resolve => {
@@ -696,7 +716,8 @@
             stopAllAudio();
             const item = library.find(t => t.id === id);
             if(!item) return;
-
+            currentTrack = item; // Para o Cast saber o que tocar
+            
             showLoader("Carregando...");
             btn.querySelector('i').className = 'fas fa-spinner fa-spin';
 
@@ -705,6 +726,9 @@
                 playerInstance = new Tone.Player(audioBuffer).toDestination();
                 playerInstance.trackId = id;
                 
+                // Conectar Analyser (Visualizer)
+                connectAnalyser(playerInstance);
+                
                 playerInstance.onstop = () => {
                     if(btn && btn.querySelector('i')) btn.querySelector('i').className = 'fas fa-play';
                     if(playerInstance) { playerInstance.dispose(); playerInstance = null; }
@@ -712,11 +736,61 @@
                 
                 hideLoader();
                 playerInstance.start();
+                updateMediaSession(item.name); // Atualiza controles da tela de bloqueio
                 btn.querySelector('i').className = 'fas fa-stop';
             } catch(e) {
                 hideLoader();
                 showToast("Erro ao abrir áudio.");
                 btn.querySelector('i').className = 'fas fa-play';
+            }
+        }
+
+        // --- VISUALIZER ---
+        function initVisualizer() {
+            analyser = Tone.context.createAnalyser();
+            analyser.fftSize = 256;
+            const canvas = document.getElementById('visualizerCanvas');
+            visualizerContext = canvas.getContext('2d');
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            canvas.style.display = 'block';
+            drawVisualizer();
+        }
+
+        function connectAnalyser(source) {
+            if(analyser) source.connect(analyser);
+        }
+
+        function drawVisualizer() {
+            requestAnimationFrame(drawVisualizer);
+            if(!analyser) return;
+
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            analyser.getByteFrequencyData(dataArray);
+
+            const canvas = document.getElementById('visualizerCanvas');
+            const ctx = visualizerContext;
+            const width = canvas.width;
+            const height = canvas.height;
+
+            ctx.clearRect(0, 0, width, height);
+            
+            // Verifica se tem som tocando
+            const hasSound = dataArray.some(val => val > 0);
+            if(!hasSound) return;
+
+            ctx.beginPath();
+            const barWidth = (width / bufferLength) * 2.5;
+            let barHeight;
+            let x = 0;
+
+            for(let i = 0; i < bufferLength; i++) {
+                barHeight = dataArray[i];
+                // Gradiente baseado na amplitude
+                ctx.fillStyle = `rgba(${barHeight + 50}, 255, 100, 0.3)`;
+                ctx.fillRect(x, height - barHeight, barWidth, barHeight);
+                x += barWidth + 1;
             }
         }
 
@@ -747,7 +821,7 @@
             if(filter) filter.dispose();
             if(limiter) limiter.dispose();
 
-            currentAudioBuffer = buffer; // Guarda ref global
+            currentAudioBuffer = buffer; 
             
             limiter = new Tone.Limiter(-0.5).toDestination();
             filter = new Tone.Filter(20000, "lowpass").connect(limiter);
@@ -756,12 +830,14 @@
             grainPlayer.grainSize = 0.2;
             grainPlayer.overlap = 0.1;
             
+            // Conectar Visualizer
+            connectAnalyser(grainPlayer);
+
             grainPlayer.onstop = () => updateBtn(false);
 
             hideLoader();
             document.getElementById('studioStatus').innerText = "Motor Pronto. Duração: " + buffer.duration.toFixed(1) + "s";
             
-            // Reset controles
             currentPitch = 0;
             currentFine = 0;
             document.getElementById('fineSlider').value = 0;
@@ -769,12 +845,10 @@
             setTone(0, document.querySelector('.t-btn.orig'));
         }
 
-        // Lógica de Tons Combinada (Inteiro + Fino)
         function setTone(semitones, btn) {
             if(!grainPlayer) return;
             currentPitch = semitones;
             
-            // UI Update
             document.querySelectorAll('.t-btn').forEach(b => b.classList.remove('active'));
             if(btn) btn.classList.add('active');
             
@@ -790,11 +864,9 @@
         function applyPitch() {
             if(!grainPlayer) return;
 
-            // Fórmula: (Semitons * 100) + Cents
             const totalCents = (currentPitch * 100) + currentFine;
             grainPlayer.detune = totalCents;
 
-            // Otimização de Grain baseada no Pitch Total
             if(totalCents < 0) { 
                 grainPlayer.grainSize = 0.25; 
                 grainPlayer.overlap = 0.12; 
@@ -822,6 +894,7 @@
             } else {
                 grainPlayer.start();
                 updateBtn(true);
+                updateMediaSession(currentTrack.name);
             }
         }
 
@@ -838,7 +911,83 @@
             }
         }
 
-        // --- SISTEMA DE EXPORTAÇÃO "CHUNKED" (ANTI-CRASH) ---
+        // --- NOVO: LÓGICA DE CASTING (TRANSMISSÃO) ---
+        async function toggleCast() {
+            const castBtn = document.getElementById('btnCast');
+            const castAudio = document.getElementById('castAudio');
+
+            if (!currentTrack) {
+                showToast("Selecione uma música primeiro.");
+                return;
+            }
+
+            // Se já estiver tocando localmente, pausa
+            stopAllAudio(); 
+
+            // Criar URL temporária para o Blob atual
+            // IMPORTANTE: Cast nativo só funciona com URLs limpas, não stream de Web Audio.
+            // Por isso transmitimos o arquivo.
+            const blobUrl = URL.createObjectURL(currentTrack.blob);
+            castAudio.src = blobUrl;
+
+            // Feedback Visual
+            showToast("Procurando dispositivos...");
+            
+            try {
+                // Tenta usar a API Remote Playback (Chrome/Android)
+                if (castAudio.remote) {
+                    castAudio.remote.watchAvailability((available) => {
+                        if (available) {
+                            castAudio.remote.prompt().then(() => {
+                                castBtn.classList.add('casting');
+                            }).catch(err => {
+                                // Usuário cancelou
+                                console.log("Cast cancelado ou falhou:", err);
+                            });
+                        } else {
+                            // Se a API diz que não tem, tentamos tocar mesmo assim para disparar AirPlay no iOS
+                            castAudio.play();
+                            showToast("Use o menu de AirPlay/Cast do sistema.");
+                        }
+                    });
+                } else {
+                    // Fallback para iOS/Safari (AirPlay nativo aparece nos controles)
+                    castAudio.play();
+                    showToast("Controles de transmissão ativados.");
+                }
+
+                // Aviso de limitação técnica
+                if(currentPitch !== 0 || currentFine !== 0) {
+                    setTimeout(() => {
+                        alert("Nota: Para transmitir com as alterações de voz, salve a edição primeiro e transmita o arquivo salvo.");
+                    }, 1000);
+                }
+
+            } catch (e) {
+                console.error(e);
+                showToast("Erro ao iniciar transmissão.");
+            }
+        }
+
+        // Media Session API (Controles de Bloqueio)
+        function updateMediaSession(title) {
+            if ('mediaSession' in navigator) {
+                navigator.mediaSession.metadata = new MediaMetadata({
+                    title: title,
+                    artist: 'VocalStudio Pro',
+                    artwork: [{ src: 'https://cdn-icons-png.flaticon.com/512/3039/3039462.png', sizes: '512x512', type: 'image/png' }]
+                });
+                navigator.mediaSession.setActionHandler('play', () => { 
+                    if(grainPlayer) { grainPlayer.start(); updateBtn(true); }
+                    else if(playerInstance) playerInstance.start();
+                });
+                navigator.mediaSession.setActionHandler('pause', () => { 
+                    stopAllAudio();
+                });
+            }
+        }
+
+        // --- SISTEMA DE EXPORTAÇÃO "CHUNKED" ---
         function openSaveModal() {
             if(!grainPlayer) return;
             const s = currentPitch > 0 ? "+" : "";
@@ -853,7 +1002,6 @@
             stopAllAudio();
 
             if(currentPitch === 0 && currentFine === 0) {
-                // Atalho para original
                 showLoader("Salvando original...");
                 setTimeout(() => finishExport(bufferToWave(currentAudioBuffer), name), 100);
                 return;
@@ -862,8 +1010,6 @@
             const totalDuration = currentAudioBuffer.duration;
             const chunks = Math.ceil(totalDuration / CHUNK_DURATION);
             const renderedBuffers = [];
-
-            // Parâmetros para replicar no Offline Context
             const totalCents = (currentPitch * 100) + currentFine;
             
             const p = {
@@ -873,35 +1019,25 @@
                 freq: filter.frequency.value
             };
 
-            // Loop de Renderização Fatiada
             for (let i = 0; i < chunks; i++) {
                 showLoader(`Processando parte ${i+1}/${chunks}...`);
-                
                 const startTime = i * CHUNK_DURATION;
                 const duration = Math.min(CHUNK_DURATION, totalDuration - startTime);
                 
                 try {
-                    // Renderiza apenas uma fatia pequena
                     const chunkBuffer = await Tone.Offline(async () => {
                         const gp = new Tone.GrainPlayer(currentAudioBuffer);
                         gp.grainSize = p.grainSize;
                         gp.overlap = p.overlap;
                         gp.detune = p.detune;
                         gp.playbackRate = 1;
-                        
                         const f = new Tone.Filter(p.freq, "lowpass");
                         gp.connect(f);
                         f.toDestination();
-                        
-                        // O segredo: tocar apenas a parte específica do buffer original
                         gp.start(0, startTime, duration); 
                     }, duration);
-                    
                     renderedBuffers.push(chunkBuffer);
-                    
-                    // Pequena pausa para a UI atualizar e evitar "Page Unresponsive"
                     await new Promise(r => setTimeout(r, 10)); 
-
                 } catch(e) {
                     console.error(e);
                     hideLoader();
@@ -911,36 +1047,29 @@
             }
 
             showLoader("Finalizando...");
-            // Combina todos os pedaços
             const finalBuffer = concatenateBuffers(renderedBuffers, Tone.context);
             const wavBlob = bufferToWave(finalBuffer);
-            
             finishExport(wavBlob, name);
         }
 
         async function finishExport(wavBlob, name) {
             await saveToDB(wavBlob, name);
             loadTracks();
-            
             if(navigator.canShare && navigator.share) {
                 const f = new File([wavBlob], name+".wav", {type: "audio/wav"});
                 navigator.share({files:[f], title:name}).catch(()=>{});
             } else {
                 forceDownload(wavBlob, name);
             }
-            
             hideLoader();
             nav('library');
             showToast("Sucesso!");
         }
 
-        // Função para juntar os pedaços de áudio
         function concatenateBuffers(buffers, context) {
             let totalLen = 0;
             for(let b of buffers) totalLen += b.length;
-            
             const output = context.createBuffer(buffers[0].numberOfChannels, totalLen, buffers[0].sampleRate);
-            
             let offset = 0;
             for(let b of buffers) {
                 for(let channel = 0; channel < b.numberOfChannels; channel++) {
