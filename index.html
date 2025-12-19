@@ -58,7 +58,7 @@
 
         /* Botão PWA */
         #btnInstall {
-            display: none;
+            display: none; /* Só aparece se disponível */
             background: var(--primary);
             color: #000;
             border: none;
@@ -147,7 +147,7 @@
         .btn-rename { color: #ffab00; }
         .btn-del { color: var(--danger); }
 
-        /* --- ESTÚDIO --- */
+        /* --- ESTÚDIO (UPDATE) --- */
         .track-display {
             background: var(--card); padding: 20px; border-radius: 16px; border: 1px solid #333;
             text-align: center; margin-bottom: 25px;
@@ -156,7 +156,7 @@
         .track-title-large { font-size: 1.1rem; font-weight: bold; color: var(--primary); display: block; margin-bottom: 5px; }
         .track-status { font-size: 0.75rem; color: #666; }
 
-        /* GRADE DE TONS */
+        /* NOVA GRADE DE TONS EXPANDIDA */
         .tone-grid { 
             display: grid; 
             grid-template-columns: repeat(3, 1fr); 
@@ -270,7 +270,7 @@
         
         /* Conexão Code Box */
         .connect-box { background: #222; padding: 20px; border-radius: 12px; border: 1px solid #444; margin-top: 20px; text-align: center; }
-        .connect-code { font-size: 2rem; font-weight: 900; color: var(--primary); letter-spacing: 5px; margin: 10px 0; user-select: text; }
+        .connect-code { font-size: 4rem; font-weight: 900; color: var(--primary); letter-spacing: 10px; margin: 10px 0; }
     </style>
 </head>
 <body>
@@ -278,15 +278,16 @@
     <!-- INTERFACE TV (ESCONDIDA POR PADRÃO) -->
     <div id="tv-interface">
         <div class="tv-content">
-            <!-- TELA DE CONEXÃO INICIAL -->
+            <!-- TELA DE CONEXÃO INICIAL (TV) -->
             <div id="tvConnectScreen">
-                <div style="font-size:2rem; margin-bottom:20px; color:#fff"><i class="fas fa-tv"></i> MODO TV WEB</div>
-                <p style="color:#aaa; max-width:500px; margin:0 auto 30px auto;">
-                    No seu telemóvel, toque no ícone da TV, escolha <b>"Gerar Código"</b> e digite o código abaixo.
+                <div style="font-size:2rem; margin-bottom:20px; color:#fff"><i class="fas fa-tv"></i> MODO TV ATIVO</div>
+                <p style="color:#aaa; max-width:600px; margin:0 auto 30px auto;">
+                    Para conectar, abra o app no celular, clique no ícone da TV e digite este código:
                 </p>
-                <input type="text" id="tvCodeInput" placeholder="Inserir Código" style="font-size:1.5rem; padding:15px; text-align:center; border-radius:10px; border:none; width:200px; text-transform:uppercase;">
-                <button onclick="connectToSender()" style="font-size:1.5rem; padding:15px 30px; background:var(--primary); border:none; border-radius:10px; cursor:pointer; font-weight:bold; margin-left:10px;">CONECTAR</button>
-                <div id="tvConnStatus" style="margin-top:20px; color:#888;">Aguardando...</div>
+                <div class="connect-box">
+                    <div id="tvDisplayCode" class="connect-code">...</div>
+                </div>
+                <div id="tvConnStatus" style="margin-top:20px; color:#888;">Aguardando conexão do celular...</div>
             </div>
 
             <!-- TELA DE PLAYER (APÓS CONEXÃO) -->
@@ -304,7 +305,7 @@
                 </div>
             </div>
         </div>
-        <div class="tv-watermark"><i class="fas fa-wifi"></i> VOCAL STUDIO WEB LINK</div>
+        <div class="tv-watermark"><i class="fas fa-wifi"></i> VOCAL STUDIO TV</div>
     </div>
 
     <!-- MODAL RENOMEAR -->
@@ -331,31 +332,21 @@
         </div>
     </div>
 
-    <!-- MODAL HELP TV (SENDER) -->
+    <!-- MODAL HELP TV (SENDER/MOBILE) -->
     <div id="tvHelpModal" class="overlay">
         <div class="modal-box">
-            <h3 style="margin:0; color:var(--primary); margin-bottom:10px;"><i class="fas fa-tv"></i> Conectar à TV</h3>
+            <h3 style="margin:0; color:var(--primary); margin-bottom:10px;"><i class="fas fa-mobile-alt"></i> Conectar à TV</h3>
+            <p style="color:#ccc; font-size:0.9rem; margin-bottom:20px;">
+                1. Abra este site na TV e clique em <b>"SOU A TV"</b>.<br>
+                2. Digite o código que aparece na TV:
+            </p>
             
-            <!-- ABAS DO MODAL -->
-            <div style="display:flex; gap:10px; margin-bottom:15px;">
-                 <button class="m-btn" style="background:#333; color:white; font-size:0.8rem;" onclick="showTab('tabCode')">Web Code (Samsung/LG)</button>
-            </div>
-
-            <!-- TAB CODIGO -->
-            <div id="tabCode">
-                <p style="color:#ccc; font-size:0.9rem; margin-bottom:10px;">
-                    1. Abra este site no navegador da TV.<br>
-                    2. Clique em <b>"SOU A TV"</b> na TV.<br>
-                    3. Digite este código lá:
-                </p>
-                <div class="connect-box">
-                    <div id="myPeerId" class="connect-code">...</div>
-                    <div style="font-size:0.7rem; color:#888;">Este é o seu código</div>
-                </div>
-            </div>
+            <input type="text" id="mobileCodeInput" placeholder="Ex: A1B2" style="font-size:1.5rem; padding:15px; text-align:center; border-radius:10px; border:1px solid #444; width:100%; text-transform:uppercase; background:#000; color:white; margin-bottom:15px;">
+            
+            <button onclick="connectToTV()" style="width:100%; font-size:1.2rem; padding:15px; background:var(--primary); border:none; border-radius:10px; cursor:pointer; font-weight:bold; color:black;">CONECTAR</button>
 
             <div class="modal-btns" style="margin-top:20px;">
-                <button class="m-btn m-cancel" onclick="closeModal('tvHelpModal')">Fechar</button>
+                <button class="m-btn m-cancel" onclick="closeModal('tvHelpModal')">Cancelar</button>
             </div>
         </div>
     </div>
@@ -447,41 +438,102 @@
     <div id="toast">Aviso</div>
 
     <script>
-        // --- 0. PWA BOOTSTRAP ---
+        // --- 0. PWA BOOTSTRAP (HACKER MODE) ---
+        // Cria o manifest dinamicamente para permitir instalação
         function initPWA() {
             const manifest = {
-                "name": "VocalStudio", "short_name": "VocalStudio", "start_url": ".", "display": "standalone", "background_color": "#000000", "theme_color": "#000000", "orientation": "portrait",
-                "icons": [{"src": "https://cdn-icons-png.flaticon.com/512/3039/3039462.png", "sizes": "512x512", "type": "image/png"}]
+                "name": "VocalStudio",
+                "short_name": "VocalStudio",
+                "start_url": ".",
+                "display": "standalone",
+                "background_color": "#000000",
+                "theme_color": "#000000",
+                "orientation": "portrait",
+                "icons": [
+                    {
+                        "src": "https://cdn-icons-png.flaticon.com/512/3039/3039462.png",
+                        "sizes": "512x512",
+                        "type": "image/png"
+                    }
+                ]
             };
-            document.querySelector('#dynamic-manifest').setAttribute('href', URL.createObjectURL(new Blob([JSON.stringify(manifest)], {type: 'application/json'})));
+            const stringManifest = JSON.stringify(manifest);
+            const blob = new Blob([stringManifest], {type: 'application/json'});
+            const manifestURL = URL.createObjectURL(blob);
+            document.querySelector('#dynamic-manifest').setAttribute('href', manifestURL);
         }
         initPWA();
 
+        // Lógica de Instalação (Chrome/Android)
         let deferredPrompt;
-        window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferredPrompt = e; document.getElementById('btnInstall').style.display = 'block'; });
-        async function installApp() { if(deferredPrompt){ deferredPrompt.prompt(); if((await deferredPrompt.userChoice).outcome === 'accepted'){ deferredPrompt = null; document.getElementById('btnInstall').style.display = 'none'; } } }
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            document.getElementById('btnInstall').style.display = 'block';
+        });
+
+        async function installApp() {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                const { outcome } = await deferredPrompt.userChoice;
+                if (outcome === 'accepted') {
+                    deferredPrompt = null;
+                    document.getElementById('btnInstall').style.display = 'none';
+                }
+            }
+        }
 
         // --- 1. BANCO DE DADOS ATUALIZADO (V2) ---
-        let db; let dbReady = false;
-        const DB_NAME = "VocalStudioV1_Fixed"; const DB_VERSION = 2;
+        let db;
+        let dbReady = false;
+        const DB_NAME = "VocalStudioV1_Fixed";
+        const DB_VERSION = 2; // Incrementado para adicionar store de settings
 
         function initDB() {
             return new Promise((resolve) => {
                 const req = indexedDB.open(DB_NAME, DB_VERSION);
-                req.onupgradeneeded = e => { db = e.target.result; 
-                    if(!db.objectStoreNames.contains('tracks')) db.createObjectStore('tracks', {keyPath:'id', autoIncrement:true});
-                    if(!db.objectStoreNames.contains('settings')) db.createObjectStore('settings');
+                
+                req.onupgradeneeded = e => {
+                    db = e.target.result;
+                    // Store de Tracks (Músicas)
+                    if(!db.objectStoreNames.contains('tracks')) {
+                        db.createObjectStore('tracks', {keyPath:'id', autoIncrement:true});
+                    }
+                    // Store de Configurações (Handle da Pasta)
+                    if(!db.objectStoreNames.contains('settings')) {
+                        db.createObjectStore('settings');
+                    }
                 };
-                req.onsuccess = e => { db = e.target.result; dbReady = true; document.getElementById('dbStatus').innerText = "DB OK"; document.getElementById('dbStatus').style.color = "var(--primary)"; loadTracks(); checkAutoScanFolder(); resolve(); };
-                req.onerror = () => { document.getElementById('dbStatus').innerText = "DB Error"; resolve(); };
+                req.onsuccess = e => { 
+                    db = e.target.result; 
+                    dbReady = true; 
+                    document.getElementById('dbStatus').innerText = "DB OK";
+                    document.getElementById('dbStatus').style.color = "var(--primary)";
+                    loadTracks(); 
+                    checkAutoScanFolder(); // Verifica se tem pasta salva ao iniciar
+                    resolve();
+                };
+                req.onerror = () => { 
+                    document.getElementById('dbStatus').innerText = "DB Error"; 
+                    resolve(); 
+                };
             });
         }
 
         // --- 2. ESTADO GLOBAL ---
-        let library = []; let currentTrack = null; let editingId = null;
-        let grainPlayer = null; let playerInstance = null; let filter = null; let limiter = null;
-        let currentPitch = 0; let currentFine = 0; let currentAudioBuffer = null;
-        const CHUNK_DURATION = 15;
+        let library = [];
+        let currentTrack = null; 
+        let editingId = null;
+        let grainPlayer = null;
+        let playerInstance = null;
+        let filter = null;
+        let limiter = null;
+        let currentPitch = 0; // Semitones (Inteiros)
+        let currentFine = 0;  // Cents (Ajuste fino)
+        let currentAudioBuffer = null;
+
+        // Configuração de Chunking
+        const CHUNK_DURATION = 15; // Segundos por fatia (seguro para mobile)
 
         // --- 3. SISTEMA DE CONEXÃO WEB (PEERJS) ---
         let peer = null;
@@ -494,43 +546,45 @@
         };
 
         function generateShortId() {
-            // Gera ID aleatório de 4 letras para facilitar digitação na TV
+            // Gera ID aleatório de 4 caracteres (Letras/Numeros) para a TV
             const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
             let res = ""; for(let i=0; i<4; i++) res += chars.charAt(Math.floor(Math.random() * chars.length));
             return res;
         }
 
         function initPeer() {
-            // Cria ID único. No "Sender" (Celular) é usado para a TV conectar.
-            // Usamos um ID fixo ou aleatório. 
-            // Para simplificar, o celular gera um ID curto e mostra.
+            // Gera um ID para esta sessão.
+            // Se formos a TV, mostraremos este ID.
             if(!myId) myId = generateShortId();
             
             peer = new Peer(myId);
 
             peer.on('open', (id) => {
-                console.log('My peer ID is: ' + id);
-                document.getElementById('myPeerId').innerText = id;
+                console.log('Peer ID: ' + id);
+                // Atualiza o display da TV se estivermos no modo TV
+                const codeDisplay = document.getElementById('tvDisplayCode');
+                if(codeDisplay) codeDisplay.innerText = id;
             });
 
             peer.on('connection', (c) => {
-                // SENDER: Recebeu conexão da TV
+                // TV (Receiver): Recebeu conexão do Celular
                 conn = c;
                 setupConnectionHandlers();
-                showToast("TV Conectada!");
-                document.getElementById('btnTV').classList.add('active-cast');
-                closeModal('tvHelpModal');
                 
-                // Envia faixa atual se houver
-                if(currentTrack && currentAudioBuffer) {
-                    sendTrackToTV(currentTrack);
+                // Se eu sou a TV, mudo a tela
+                if(document.getElementById('tv-interface').classList.contains('visible')) {
+                    document.getElementById('tvConnStatus').innerText = "Conectado!";
+                    setTimeout(() => {
+                        document.getElementById('tvConnectScreen').style.display = 'none';
+                        document.getElementById('tvPlayerScreen').style.display = 'block';
+                    }, 1000);
                 }
             });
 
             peer.on('error', (err) => {
                 console.log(err);
+                // Se ID colidir, tenta outro
                 if(err.type === 'unavailable-id') {
-                    // Se ID colidir, tenta outro (raro com 4 chars mas possivel)
                     myId = generateShortId();
                     peer.destroy();
                     setTimeout(initPeer, 500);
@@ -541,31 +595,51 @@
         // --- MODO TV (RECEIVER) ---
         function enterTvMode() {
             document.getElementById('tv-interface').classList.add('visible');
-            // Se já tiver peer, destrói para criar um limpo ou usa o atual para conectar ao sender
-            // Na TV, não precisamos de ID fixo, apenas conectar.
+            // A TV já tem o Peer iniciado e mostrando o código em #tvDisplayCode
         }
 
-        function connectToSender() {
-            const code = document.getElementById('tvCodeInput').value.toUpperCase();
+        // --- MODO MOBILE (SENDER) ---
+        function openSenderModal() {
+            // Se já conectado, avisa para desconectar
+            if(conn && conn.open) {
+                if(confirm("Desconectar da TV?")) {
+                    conn.close(); conn = null;
+                    document.getElementById('btnTV').classList.remove('active-cast');
+                }
+            } else {
+                openModal('tvHelpModal');
+            }
+        }
+
+        function connectToTV() {
+            const code = document.getElementById('mobileCodeInput').value.toUpperCase();
             if(code.length < 3) { alert("Código inválido"); return; }
 
-            document.getElementById('tvConnStatus').innerText = "Conectando ao " + code + "...";
+            showLoader("Conectando à TV...");
             
-            // Conecta ao ID do celular
+            // Conecta ao ID da TV
             conn = peer.connect(code);
 
             conn.on('open', () => {
-                document.getElementById('tvConnStatus').innerText = "Conectado! Aguardando dados...";
-                document.getElementById('tvConnectScreen').style.display = 'none';
-                document.getElementById('tvPlayerScreen').style.display = 'block';
-            });
-
-            conn.on('data', (data) => {
-                handleTVData(data);
+                hideLoader();
+                closeModal('tvHelpModal');
+                showToast("Conectado com Sucesso!");
+                document.getElementById('btnTV').classList.add('active-cast');
+                
+                // Se já tem música carregada, envia para a TV
+                if(currentTrack && currentAudioBuffer) {
+                    sendTrackToTV(currentTrack);
+                }
             });
 
             conn.on('error', (err) => {
-                document.getElementById('tvConnStatus').innerText = "Erro: " + err;
+                hideLoader();
+                alert("Erro ao conectar: " + err);
+            });
+            
+            conn.on('close', () => {
+               document.getElementById('btnTV').classList.remove('active-cast');
+               showToast("Desconectado.");
             });
         }
 
@@ -577,8 +651,7 @@
             // Envia metadados
             conn.send({ type: 'meta', name: track.name });
             
-            // Envia o Blob do Audio (PeerJS lida com binários)
-            // Tone buffer -> Blob é difícil. Melhor enviar o Blob original salvo no DB.
+            // Envia o Blob do Audio
             if(track.blob) {
                 conn.send({ type: 'audio', blob: track.blob });
             }
@@ -589,18 +662,36 @@
             conn.send({ type: 'control', action: type, value: value });
         }
 
-        // RECEIVER: Manipulação de dados
+        // RECEIVER: Manipulação de dados (Executado na TV)
         let tvPlayer = null;
+        
+        function setupConnectionHandlers() {
+            if(!conn) return;
+            
+            conn.on('data', (data) => {
+                handleTVData(data);
+            });
+            
+            conn.on('close', () => {
+                // Se desconectar, volta pra tela de código
+                document.getElementById('tvConnectScreen').style.display = 'block';
+                document.getElementById('tvPlayerScreen').style.display = 'none';
+                document.getElementById('tvConnStatus').innerText = "Aguardando conexão...";
+            });
+        }
+
         async function handleTVData(data) {
+            // 1. Recebimento de Nome
             if(data.type === 'meta') {
                 document.getElementById('tvTitle').innerText = data.name;
             }
+            // 2. Recebimento de Áudio
             if(data.type === 'audio') {
                 document.getElementById('tvStatus').innerText = "Carregando Áudio...";
                 const blob = new Blob([data.blob]);
                 const url = URL.createObjectURL(blob);
                 
-                await Tone.start();
+                await Tone.start(); // User interaction already happened on "SOU A TV" click
                 if(tvPlayer) tvPlayer.dispose();
                 
                 tvPlayer = new Tone.Player(url).toDestination();
@@ -612,6 +703,7 @@
                 document.getElementById('tvStatus').innerText = "Pronto";
                 document.getElementById('tvDuration').innerText = formatTime(tvPlayer.buffer.duration);
             }
+            // 3. Comandos de Controle
             if(data.type === 'control') {
                 if(data.action === 'play') {
                     Tone.Transport.start();
@@ -623,10 +715,9 @@
                     document.getElementById('tvStatus').innerText = "Pausado";
                 }
                 if(data.action === 'pitch') {
-                    // Aplica pitch aproximado na TV (PlaybackRate)
+                    // Aplica pitch aproximado na TV via PlaybackRate (Leve para TV)
                     // Frequencia Ratio = 2^(semitons/12)
                     if(tvPlayer) {
-                        // Total cents -> Semitones
                         const semi = data.value / 100;
                         tvPlayer.playbackRate = Tone.intervalToFrequencyRatio(semi);
                     }
@@ -654,30 +745,6 @@
             loop();
         }
 
-        function setupConnectionHandlers() {
-            // Se desconectar
-            conn.on('close', () => {
-                showToast("TV Desconectada");
-                document.getElementById('btnTV').classList.remove('active-cast');
-            });
-        }
-
-        function openSenderModal() {
-            // Se já conectado, apenas avisa
-            if(conn && conn.open) {
-                if(confirm("Desconectar da TV?")) {
-                    conn.close(); conn = null;
-                    document.getElementById('btnTV').classList.remove('active-cast');
-                }
-            } else {
-                openModal('tvHelpModal');
-            }
-        }
-
-        function showTab(t) {
-            // Simples toggle, só tem uma tab agora
-        }
-
         // --- 4. ENGINE DE ÁUDIO (VERIFICAÇÃO DE ORIGINALIDADE) ---
         function nav(s) {
             stopAllAudio();
@@ -701,6 +768,7 @@
             }
             Tone.Transport.stop(); 
             updateBtn(false);
+            document.querySelectorAll('.btn-play i').forEach(i=>i.className='fas fa-play');
             sendControlToTV('pause');
         }
 
@@ -708,7 +776,8 @@
         async function handleImport(files) {
             if(!files.length) return;
             showLoader("Importando...");
-            for (const file of Array.from(files)) {
+            const filesArray = Array.from(files);
+            for (const file of filesArray) {
                 if (file.name.match(/\.(mp3|wav|aac|ogg|m4a)$/i) && file.size > 100) {
                     const name = file.name.replace(/\.[^/.]+$/, "");
                     if (!library.find(t => t.name === name)) await saveToDB(file, name);
@@ -871,6 +940,7 @@
             const totalCents = (currentPitch * 100) + currentFine;
             grainPlayer.detune = totalCents;
 
+            // Lógica original de preservação de formantes simples via grainSize
             if(totalCents < 0) { 
                 grainPlayer.grainSize = 0.25; 
                 grainPlayer.overlap = 0.12; 
@@ -933,6 +1003,7 @@
             const renderedBuffers = [];
             const totalCents = (currentPitch * 100) + currentFine;
             
+            // Parametros originais preservados
             const p = { grainSize: grainPlayer.grainSize, overlap: grainPlayer.overlap, detune: totalCents, freq: filter.frequency.value };
 
             for (let i = 0; i < chunks; i++) {
