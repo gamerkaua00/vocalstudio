@@ -271,6 +271,19 @@
         /* Conexão Code Box */
         .connect-box { background: #222; padding: 20px; border-radius: 12px; border: 1px solid #444; margin-top: 20px; text-align: center; }
         .connect-code { font-size: 4rem; font-weight: 900; color: var(--primary); letter-spacing: 10px; margin: 10px 0; }
+
+        /* NOVOS CONTROLES DE TV */
+        .tv-controls {
+            display: flex; justify-content: center; gap: 20px; margin-top: 30px;
+        }
+        .tv-btn {
+            background: #222; color: white; border: 2px solid #444;
+            padding: 15px 40px; font-size: 1.5rem; border-radius: 50px;
+            cursor: pointer; transition: 0.2s; display: flex; align-items: center; gap: 10px;
+        }
+        .tv-btn:hover { background: #333; border-color: var(--primary); }
+        .tv-btn:active { transform: scale(0.95); }
+        .tv-btn i { font-size: 1.2rem; }
     </style>
 </head>
 <body>
@@ -302,6 +315,13 @@
                 <div class="tv-time-display">
                     <span id="tvCurrentTime">00:00</span>
                     <span id="tvDuration">00:00</span>
+                </div>
+
+                <!-- CONTROLES MANUAIS NA TV -->
+                <div class="tv-controls">
+                    <button class="tv-btn" onclick="tvManualToggle()">
+                        <i class="fas fa-play" id="tvPlayIcon"></i> PLAY / PAUSE
+                    </button>
                 </div>
             </div>
         </div>
@@ -680,6 +700,7 @@
 
         // RECEIVER: Manipulação de dados (Executado na TV)
         let tvPlayer = null;
+        let pendingPlayCommand = false; // Flag para auto-play após carregar
         
         function setupConnectionHandlers() {
             if(!conn) return;
@@ -694,6 +715,22 @@
                 document.getElementById('tvPlayerScreen').style.display = 'none';
                 document.getElementById('tvConnStatus').innerText = "Aguardando conexão...";
             });
+        }
+
+        // FUNÇÕES MANUAIS TV
+        async function tvManualToggle() {
+            if(Tone.context.state !== 'running') await Tone.start();
+            
+            if(Tone.Transport.state === 'started') {
+                Tone.Transport.pause();
+                document.getElementById('tvStatus').innerText = "Pausado (Manual)";
+                document.getElementById('tvPlayIcon').className = "fas fa-play";
+            } else {
+                Tone.Transport.start();
+                document.getElementById('tvStatus').innerText = "Reproduzindo (Manual)";
+                document.getElementById('tvPlayIcon').className = "fas fa-pause";
+                startTVLoop();
+            }
         }
 
         async function handleTVData(data) {
@@ -761,8 +798,18 @@
 
                     // Update UI
                     const dur = tvPlayer.buffer.duration;
-                    document.getElementById('tvStatus').innerText = "Pronto (" + formatTime(dur) + ")";
+                    document.getElementById('tvStatus').innerText = "Pronto - Aperte Play no Celular ou Abaixo";
                     document.getElementById('tvDuration').innerText = formatTime(dur);
+                    document.getElementById('tvPlayIcon').className = "fas fa-play";
+
+                    // AUTO PLAY SE ESTIVER PENDENTE
+                    if(pendingPlayCommand) {
+                        pendingPlayCommand = false;
+                        document.getElementById('tvStatus').innerText = "Sincronizando Play...";
+                        Tone.Transport.start();
+                        startTVLoop();
+                        document.getElementById('tvPlayIcon').className = "fas fa-pause";
+                    }
                     
                 } catch(e) {
                     console.error(e);
@@ -772,15 +819,24 @@
             // 3. Comandos de Controle
             if(data.type === 'control') {
                 if(data.action === 'play') {
-                    // Garante inicio
-                    if(Tone.context.state !== 'running') await Tone.start();
-                    Tone.Transport.start();
-                    document.getElementById('tvStatus').innerText = "Reproduzindo";
-                    startTVLoop();
+                    // Se player ainda não existe (carregando), marca pendência
+                    if(!tvPlayer || !tvPlayer.loaded) {
+                        pendingPlayCommand = true;
+                        document.getElementById('tvStatus').innerText = "Carregando... (Play Agendado)";
+                    } else {
+                        // Garante inicio
+                        if(Tone.context.state !== 'running') await Tone.start();
+                        Tone.Transport.start();
+                        document.getElementById('tvStatus').innerText = "Reproduzindo";
+                        document.getElementById('tvPlayIcon').className = "fas fa-pause";
+                        startTVLoop();
+                    }
                 }
                 if(data.action === 'pause') {
+                    pendingPlayCommand = false; // Cancela pendência
                     Tone.Transport.pause();
                     document.getElementById('tvStatus').innerText = "Pausado";
+                    document.getElementById('tvPlayIcon').className = "fas fa-play";
                 }
                 if(data.action === 'pitch') {
                     // Aplica pitch aproximado na TV via PlaybackRate (Leve para TV)
