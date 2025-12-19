@@ -594,8 +594,21 @@
 
         // --- MODO TV (RECEIVER) ---
         async function enterTvMode() {
-            // Importante: Destravar Audio Context imediatamente com interação do usuário
-            await Tone.start();
+            // Importante: Tenta destravar o AudioContext IMEDIATAMENTE no clique
+            // Para TVs que exigem som: toca um oscilador silencioso
+            try {
+                await Tone.start();
+                
+                // Cria um oscilador silencioso e toca por um instante para "acordar" o hardware de som
+                const silentOsc = new Tone.Oscillator(440, "sine").toDestination();
+                silentOsc.volume.value = -Infinity; // Silêncio total
+                silentOsc.start().stop("+0.1"); // Toca 0.1s
+                
+                console.log("Audio Context Force Started");
+            } catch(e) {
+                console.log("Audio unlock failed:", e);
+            }
+
             document.getElementById('tv-interface').classList.add('visible');
             // A TV já tem o Peer iniciado e mostrando o código em #tvDisplayCode
         }
@@ -690,38 +703,70 @@
             }
             // 2. Recebimento de Áudio
             if(data.type === 'audio') {
-                document.getElementById('tvStatus').innerText = "Processando Áudio...";
-                
-                // Força tipo WAV para garantir decodificação
-                const blob = new Blob([data.blob], { type: 'audio/wav' }); 
-                const url = URL.createObjectURL(blob);
+                document.getElementById('tvStatus').innerText = "Recebido. Processando...";
                 
                 try {
-                    // Força Contexto a Acordar
+                    // Garante ArrayBuffer
+                    let arrayBuffer;
+                    if (data.blob instanceof ArrayBuffer) {
+                        arrayBuffer = data.blob;
+                    } else if (data.blob && data.blob.buffer instanceof ArrayBuffer) {
+                         // Uint8Array context
+                         arrayBuffer = data.blob.buffer;
+                    } else if (data.blob instanceof Blob) {
+                        arrayBuffer = await data.blob.arrayBuffer();
+                    } else {
+                        arrayBuffer = new Blob([data.blob]).arrayBuffer();
+                        if(arrayBuffer instanceof Promise) arrayBuffer = await arrayBuffer;
+                    }
+
+                    if (!arrayBuffer || arrayBuffer.byteLength === 0) {
+                        throw new Error("Arquivo vazio ou corrompido recebido.");
+                    }
+
+                    document.getElementById('tvStatus').innerText = "Decodificando (" + (arrayBuffer.byteLength/1024/1024).toFixed(2) + "MB)...";
+
+                    // Ensure AudioContext is ready
                     await Tone.start(); 
                     if(Tone.context.state !== 'running') await Tone.context.resume();
-                    
+
+                    // Cleanup old player
                     if(tvPlayer) {
                         tvPlayer.stop();
                         tvPlayer.dispose();
+                        tvPlayer = null;
                     }
+
+                    // Native Decode Attempt (More robust on TVs)
+                    // Importante: Passar uma cópia do buffer (slice) pois o decode esvazia o original
+                    const audioBuffer = await Tone.context.rawContext.decodeAudioData(arrayBuffer.slice(0)); 
+
+                    if (!audioBuffer) throw new Error("Falha no decode (buffer nulo)");
+
+                    // Create Player
+                    tvPlayer = new Tone.Player(audioBuffer);
+                    tvPlayer.toDestination();
                     
-                    tvPlayer = new Tone.Player(url).toDestination();
-                    
-                    // Espera carregar
-                    await tvPlayer.loaded;
-                    
+                    // Explicitly wait or check loaded
+                    if(!tvPlayer.loaded) {
+                         console.warn("Player not loaded immediately, waiting...");
+                         await tvPlayer.loaded;
+                    }
+
+                    // Sync & Stop Transport
                     tvPlayer.sync().start(0);
                     Tone.Transport.stop();
                     Tone.Transport.cancel();
-                    
-                    // Atualiza UI
+                    Tone.Transport.seconds = 0; // Reset transport position
+
+                    // Update UI
                     const dur = tvPlayer.buffer.duration;
-                    document.getElementById('tvStatus').innerText = "Pronto";
+                    document.getElementById('tvStatus').innerText = "Pronto (" + formatTime(dur) + ")";
                     document.getElementById('tvDuration').innerText = formatTime(dur);
                     
                 } catch(e) {
-                    document.getElementById('tvStatus').innerText = "Erro Decode: " + e;
+                    console.error(e);
+                    document.getElementById('tvStatus').innerText = "Erro: " + (e.message || e);
                 }
             }
             // 3. Comandos de Controle
