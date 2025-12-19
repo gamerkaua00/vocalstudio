@@ -300,7 +300,7 @@
     <div id="tvInfo">
         <div class="tv-track-name" id="tvTrackName">Nome da Música</div>
         <div class="tv-artist">VocalStudio Pro</div>
-        <div style="margin-top:20px; font-size:0.9rem; color:#888;">Use o Espelhamento de Tela (Cast/AirPlay) do seu celular</div>
+        <div style="margin-top:20px; font-size:0.9rem; color:#888;">Para ouvir com efeitos, use o "Espelhar Tela" do celular na TV.</div>
     </div>
 
     <!-- MODAL RENOMEAR -->
@@ -333,31 +333,31 @@
             <h3 style="margin:0 0 15px 0; color:var(--cast); text-align: center;"><i class="fas fa-broadcast-tower"></i> Conectar à TV</h3>
             
             <p style="font-size:0.8rem; color:#aaa; margin-bottom:15px; text-align:center;">
-                Escolha a melhor opção para o seu dispositivo:
+                Escolha como conectar:
             </p>
 
             <!-- OPÇÃO 1: MODO TV -->
             <button class="m-btn m-action" onclick="activateTvMode()">
                 <i class="fas fa-tv" style="font-size:1.5rem; color:var(--primary)"></i>
                 <div>
-                    <div style="font-weight:bold">Modo TV (Visualizer)</div>
-                    <div style="font-size:0.7rem; color:#888">Ative o "Espelhar Tela" do celular para ver na TV com efeitos.</div>
+                    <div style="font-weight:bold">Modo TV (Recomendado)</div>
+                    <div style="font-size:0.7rem; color:#888">Use o "Espelhar Tela" do celular. Transmite áudio COM efeitos.</div>
                 </div>
             </button>
 
             <!-- OPÇÃO 2: NATIVO -->
             <button class="m-btn m-action" onclick="activateNativePlayer()">
-                <i class="fab fa-apple" style="font-size:1.5rem; color:#fff"></i>
+                <i class="fab fa-bluetooth" style="font-size:1.5rem; color:#fff"></i>
                 <div>
-                    <div style="font-weight:bold">Player Nativo (AirPlay/Bluetooth)</div>
-                    <div style="font-size:0.7rem; color:#888">Ideal para iOS ou Bluetooth simples. (Sem efeitos visuais)</div>
+                    <div style="font-weight:bold">Bluetooth / Áudio Puro</div>
+                    <div style="font-size:0.7rem; color:#888">Toca o arquivo original (sem efeitos). Bom para caixas de som.</div>
                 </div>
             </button>
 
             <!-- PLAYER NATIVO (Escondido até clicar) -->
             <div id="nativePlayerContainer" style="display:none; margin-top:10px; text-align:center; background:#000; padding:10px; border-radius:8px;">
-                <div style="font-size:0.7rem; color:#f00; margin-bottom:5px;">Aviso: Efeitos de voz desativados neste modo.</div>
-                <audio id="castPlayerNative" controls></audio>
+                <div style="font-size:0.7rem; color:#f00; margin-bottom:5px;">Atenção: Efeitos desativados neste player.</div>
+                <audio id="castPlayerNative" controls playsinline></audio>
             </div>
 
             <div class="modal-btns" style="margin-top:15px;">
@@ -435,7 +435,7 @@
         </div>
 
         <div style="text-align:center; font-size:0.7rem; color:#444; margin-top:20px;">
-            Engine V2.3: TV Mode + MediaSession Fix
+            Engine V2.4: TV Fix & Stability
         </div>
     </div>
 
@@ -552,16 +552,24 @@
         }
 
         function stopAllAudio() {
+            // Pausa o transporte (timeline)
             Tone.Transport.pause();
+            
+            // Para Players simples
             if(playerInstance) {
                 if(playerInstance.state === 'started') playerInstance.stop();
                 playerInstance.dispose(); playerInstance = null;
             }
-            if(grainPlayer) {
-                if(grainPlayer.state === 'started') grainPlayer.stop();
+            // Para Grain Player (NÃO disposamos aqui para não perder a engine, apenas paramos via Transport)
+            if(grainPlayer && grainPlayer.state === 'started') {
+                 // GrainPlayer segue o Transport, então pause() acima já resolve visualmente,
+                 // mas forçamos stop no elemento se necessário.
             }
+            
+            // Pausa player nativo
             const nativeP = document.getElementById('castPlayerNative');
             nativeP.pause();
+            
             updateBtn(false);
             document.querySelectorAll('.btn-play i').forEach(i=>i.className='fas fa-play');
         }
@@ -867,17 +875,25 @@
             openModal('castModal');
         }
         function closeCastModal() {
+            // Não paramos o player nativo aqui para permitir background play se desejado,
+            // ou apenas escondemos o UI. Se for para parar ao fechar, descomente abaixo:
+            // document.getElementById('castPlayerNative').pause();
+            
             document.getElementById('nativePlayerContainer').style.display='none';
-            document.getElementById('castPlayerNative').pause();
             closeModal('castModal');
         }
 
         // Opção 1: Modo TV (Visualizer + Espelhamento)
-        function activateTvMode() {
+        async function activateTvMode() {
+            await Tone.start(); // Garante contexto de áudio
             closeCastModal();
             toggleTvMode(true);
-            showToast("Modo TV Ativo: Espelhe a tela agora!");
-            if(grainPlayer && Tone.Transport.state !== 'started') togglePlay();
+            showToast("Modo TV Ativo!");
+            
+            // Se temos motor pronto mas parado, dá play para sair som no espelhamento
+            if(grainPlayer && Tone.Transport.state !== 'started') {
+                togglePlay();
+            }
         }
 
         function toggleTvMode(active) {
@@ -885,7 +901,6 @@
             if(active) {
                 document.body.classList.add('tv-mode');
                 document.getElementById('tvTrackName').innerText = currentTrack ? currentTrack.name : "VocalStudio";
-                // Tentar fullscreen
                 if(document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
             } else {
                 document.body.classList.remove('tv-mode');
@@ -894,15 +909,28 @@
         }
 
         // Opção 2: Player Nativo (Fallback)
-        function activateNativePlayer() {
-            stopAllAudio(); // Precisa parar o engine para liberar o áudio nativo
+        async function activateNativePlayer() {
+            await Tone.start();
+            stopAllAudio(); // Para o motor de efeitos
+            
+            if(!currentTrack || !currentTrack.blob) return;
+
             const blobUrl = URL.createObjectURL(currentTrack.blob);
             const nativeP = document.getElementById('castPlayerNative');
+            
             nativeP.src = blobUrl;
             nativeP.style.display = 'block';
             document.getElementById('nativePlayerContainer').style.display = 'block';
-            nativeP.play();
-            updateMediaSession(currentTrack.name);
+            
+            nativeP.load(); // Força carregamento
+            
+            // Tenta dar play com tratamento de erro
+            nativeP.play().then(() => {
+                updateMediaSession(currentTrack.name);
+            }).catch(e => {
+                console.error("Erro playback nativo:", e);
+                showToast("Toque no play manualmente.");
+            });
         }
 
         // Media Session (Para controle na tela de bloqueio e TV via Bluetooth)
