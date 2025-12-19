@@ -23,6 +23,7 @@
             --card: #121212;
             --primary: #00e676; /* Verde Destaque */
             --accent: #651fff; /* Roxo Marca */
+            --youtube: #ff0000; /* Vermelho YouTube */
             --text: #ffffff;
             --text-sec: #888888;
             --danger: #ff1744;
@@ -106,6 +107,16 @@
         }
         .btn-add-music:active { transform: scale(0.98); }
 
+        .btn-youtube-import {
+            width: 100%; background: #222;
+            color: #fff; border: 1px solid #333; padding: 12px; border-radius: 10px;
+            font-weight: 700; font-size: 0.9rem; cursor: pointer;
+            display: flex; align-items: center; justify-content: center; gap: 10px;
+            transition: 0.2s;
+        }
+        .btn-youtube-import:hover { background: #cc0000; border-color: #cc0000; }
+        .btn-youtube-import i { color: #fff; }
+
         .btn-link-folder {
             width: 100%; background: #222;
             color: var(--folder); border: 1px solid var(--folder); padding: 12px; border-radius: 10px;
@@ -113,6 +124,7 @@
             display: flex; align-items: center; justify-content: center; gap: 10px;
         }
         .btn-link-folder:hover { background: #2a2a2a; }
+        .btn-link-folder.linked { border-color: var(--primary); color: var(--primary); }
         
         input[type="file"] { display: none; }
 
@@ -216,7 +228,7 @@
         }
         .modal-box {
             background: #1a1a1a; padding: 25px; border-radius: 16px; width: 85%; max-width: 320px;
-            text-align: center; border: 1px solid #444;
+            text-align: center; border: 1px solid #444; position: relative;
         }
         .modal-input {
             width: 100%; background: #000; border: 1px solid #444; color: white; padding: 12px;
@@ -226,6 +238,18 @@
         .m-btn { flex: 1; padding: 12px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; }
         .m-confirm { background: var(--primary); color: black; }
         .m-cancel { background: #333; color: #ccc; }
+        .m-youtube { background: #ff0000; color: white; }
+
+        /* Botões de Download do Servidor */
+        .server-list { display: flex; flex-direction: column; gap: 10px; margin-top: 15px; display: none; }
+        .btn-server {
+            background: #222; color: #fff; padding: 12px; border-radius: 8px;
+            text-decoration: none; display: flex; align-items: center; justify-content: space-between;
+            border: 1px solid #333; font-weight: bold; transition: 0.2s;
+        }
+        .btn-server:hover { background: #333; border-color: var(--primary); }
+        .btn-server span { font-size: 0.8rem; color: #888; font-weight: normal; }
+        .server-badge { font-size: 0.7rem; background: var(--primary); color:black; padding: 2px 5px; border-radius: 4px; font-weight: bold;}
 
         #loader { z-index: 4000; flex-direction: column; }
         .spinner { width: 40px; height: 40px; border: 4px solid #222; border-top-color: var(--primary); border-radius: 50%; animation: spin 1s infinite linear; }
@@ -350,6 +374,48 @@
         </div>
     </div>
 
+    <!-- MODAL YOUTUBE DOWNLOADER (HUB DE ESPELHOS) -->
+    <div id="youtubeModal" class="overlay">
+        <div class="modal-box">
+            <h3 style="margin:0; color: #ff0000; margin-bottom: 5px;"><i class="fab fa-youtube"></i> Baixar MP3</h3>
+            <p style="font-size: 0.7rem; color: #666; margin-top: 0;">Hub de Downloads (Anti-Bloqueio)</p>
+            
+            <div id="ytInputContainer">
+                <input type="text" id="youtubeInput" class="modal-input" placeholder="Cole o link do YouTube aqui...">
+                <div class="modal-btns">
+                    <button class="m-btn m-cancel" onclick="closeModal('youtubeModal')">Cancelar</button>
+                    <button class="m-btn m-youtube" onclick="prepareYoutubeLinks()">GERAR LINKS</button>
+                </div>
+                <!-- Nova Dica de Ouro -->
+                <div style="font-size: 0.7rem; color: var(--primary); margin-top: 15px; border: 1px dashed #333; padding: 10px; border-radius: 8px;">
+                    <i class="fas fa-magic"></i> <b>Dica Mágica:</b><br>
+                    Clique em <b>"Vincular Pasta"</b> na biblioteca e escolha onde você salva os downloads. Assim a música aparece sozinha aqui!
+                </div>
+            </div>
+
+            <div id="ytServers" class="server-list">
+                <div style="font-size:0.8rem; color:#fff; margin-bottom:10px;">Link processado! Escolha um servidor:</div>
+                
+                <a href="#" id="linkServer1" target="_blank" class="btn-server" onclick="trackDownloadStart()">
+                    <i class="fas fa-bolt" style="color:#00e676"></i> Yout.com (Rápido) <span class="server-badge">TOP</span>
+                </a>
+                
+                <a href="#" id="linkServer2" target="_blank" class="btn-server" onclick="trackDownloadStart()">
+                    <i class="fas fa-server" style="color:#ff9100"></i> Y2Mate (Clássico)
+                </a>
+
+                <a href="#" id="linkServer3" target="_blank" class="btn-server" onclick="trackDownloadStart()">
+                    <i class="fas fa-shield-alt" style="color:#651fff"></i> SaveTube (Backup)
+                </a>
+
+                <div style="font-size: 0.6rem; color: #555; margin-top: 15px;">
+                    *Salve na pasta vinculada para importar automaticamente ao voltar.
+                </div>
+                <button class="m-btn m-cancel" style="margin-top:10px; width:100%" onclick="resetYoutubeModal()">Voltar</button>
+            </div>
+        </div>
+    </div>
+
     <!-- MODAL SALVAR EDIÇÃO -->
     <div id="saveModal" class="overlay">
         <div class="modal-box">
@@ -409,9 +475,16 @@
             <button class="btn-add-music" onclick="triggerImport()">
                 <i class="fas fa-plus-circle"></i> ADICIONAR MÚSICAS
             </button>
-            <button class="btn-link-folder" onclick="selectFolder()">
+            
+            <!-- Botão YouTube Novo -->
+            <button class="btn-youtube-import" onclick="openModal('youtubeModal')">
+                <i class="fab fa-youtube"></i> IMPORTAR DO YOUTUBE
+            </button>
+
+            <button class="btn-link-folder" id="btnLinkFolder" onclick="selectFolder()">
                 <i class="fas fa-folder-open"></i> VINCULAR PASTA MÚSICA
             </button>
+            
             <div style="font-size:0.7rem; color:#666; margin-top:10px;">
                 Selecione arquivos manualmente ou vincule uma pasta.
             </div>
@@ -567,6 +640,7 @@
         let currentPitch = 0; // Semitones (Inteiros)
         let currentFine = 0;  // Cents (Ajuste fino)
         let currentAudioBuffer = null;
+        let isWaitingForDownload = false; // Flag para auto-scan
 
         // Configuração de Chunking
         const CHUNK_DURATION = 15; // Segundos por fatia (seguro para mobile)
@@ -580,6 +654,36 @@
             await initDB();
             initPeer();
         };
+
+        // --- LOGICA DE AUTO-IMPORT (SENIOR TRICK) ---
+        // Se o usuário clicou em baixar, quando a janela ganhar foco de novo, tentamos escanear
+        window.onfocus = async () => {
+            if(isWaitingForDownload) {
+                isWaitingForDownload = false; // Reset flag
+                const handle = await getFolderHandle();
+                
+                if(handle) {
+                    // Tenta verificar permissão silenciosamente ou pedir
+                    try {
+                        if(await verifyPermission(handle, false)) {
+                            showToast("Procurando novos arquivos...");
+                            await scanDirectory(handle, true); // True = Silent Mode (mas mostra toast se achar)
+                        } else {
+                            showToast("Permissão de pasta expirou. Revincule.");
+                        }
+                    } catch(e) { console.log(e); }
+                } else {
+                    showToast("Dica: Vincule a pasta Downloads para importar automático!");
+                    setTimeout(() => document.getElementById('btnLinkFolder').classList.add('active'), 500);
+                    setTimeout(() => document.getElementById('btnLinkFolder').classList.remove('active'), 2000);
+                }
+            }
+        };
+
+        function trackDownloadStart() {
+            isWaitingForDownload = true;
+            console.log("Aguardando usuário voltar do download...");
+        }
 
         function generateShortId() {
             // Gera ID aleatório de 4 caracteres (Letras/Numeros) para a TV
@@ -782,8 +886,8 @@
                     if (data.blob instanceof ArrayBuffer) {
                         arrayBuffer = data.blob;
                     } else if (data.blob && data.blob.buffer instanceof ArrayBuffer) {
-                         // Uint8Array context
-                         arrayBuffer = data.blob.buffer;
+                          // Uint8Array context
+                          arrayBuffer = data.blob.buffer;
                     } else if (data.blob instanceof Blob) {
                         arrayBuffer = await data.blob.arrayBuffer();
                     } else {
@@ -960,6 +1064,10 @@
                 try {
                     const dirHandle = await window.showDirectoryPicker();
                     await saveFolderHandle(dirHandle);
+                    
+                    document.getElementById('btnLinkFolder').classList.add('linked');
+                    document.getElementById('btnLinkFolder').innerHTML = '<i class="fas fa-check"></i> PASTA VINCULADA';
+                    
                     await scanDirectory(dirHandle);
                     showToast("Pasta vinculada e escaneada!");
                     return; 
@@ -981,19 +1089,37 @@
         }
         async function checkAutoScanFolder() {
             const h = await getFolderHandle();
-            if (h) { try { if(await verifyPermission(h, false)) await scanDirectory(h, true); } catch(e){} }
+            if (h) { 
+                try { 
+                    if(await verifyPermission(h, false)) {
+                        document.getElementById('btnLinkFolder').classList.add('linked');
+                        document.getElementById('btnLinkFolder').innerHTML = '<i class="fas fa-check"></i> PASTA VINCULADA';
+                        await scanDirectory(h, true); 
+                    }
+                } catch(e){} 
+            }
         }
         async function scanDirectory(h, silent = false) {
             if(!silent) showLoader("Varrendo...");
+            let foundNew = false;
             try {
                 for await (const entry of h.values()) {
                     if (entry.kind === 'file' && entry.name.match(/\.(mp3|wav|aac|ogg|m4a)$/i)) {
                         const file = await entry.getFile();
                         const name = file.name.replace(/\.[^/.]+$/, "");
-                        if(!library.find(t => t.name === name)) await saveToDB(file, name);
+                        if(!library.find(t => t.name === name)) {
+                            await saveToDB(file, name);
+                            foundNew = true;
+                        }
                     } else if (entry.kind === 'directory') { await scanDirectory(entry, true); }
                 }
-                if(!silent) { await loadTracks(); hideLoader(); } else { loadTracks(); }
+                if(!silent) { await loadTracks(); hideLoader(); } 
+                else { 
+                    if(foundNew) {
+                         loadTracks(); 
+                         showToast("Nova música detectada!");
+                    }
+                }
             } catch (err) { if(!silent) hideLoader(); }
         }
 
@@ -1154,6 +1280,41 @@
         function hideLoader() { document.getElementById('loader').style.display='none'; }
         function showToast(m) { const t=document.getElementById('toast'); t.innerText=m; t.className="show"; setTimeout(()=>t.className="", 3000); }
         function formatTime(s) { const m=Math.floor(s/60), sec=Math.floor(s%60); return `${m<10?'0'+m:m}:${sec<10?'0'+sec:sec}`; }
+
+        // --- NOVO: YOUTUBE HUB LOGIC (Anti-Block) ---
+        function prepareYoutubeLinks() {
+            const url = document.getElementById('youtubeInput').value;
+            // Regex universal para ID do YouTube (suporta youtu.be, embed, v=, etc)
+            const regExp = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i;
+            const match = url.match(regExp);
+
+            if (!match) {
+                alert("Link inválido! Certifique-se de copiar o link completo do YouTube.");
+                return;
+            }
+
+            const videoId = match[1];
+
+            // Gera Links Mágicos
+            // Opção 1: Yout (Remove "ube" do link)
+            document.getElementById('linkServer1').href = `https://yout.com/video/${videoId}`;
+            
+            // Opção 2: Y2Mate (Clássico)
+            document.getElementById('linkServer2').href = `https://www.y2mate.com/youtube/${videoId}`;
+            
+            // Opção 3: SaveTube (Backup)
+            document.getElementById('linkServer3').href = `https://save.tube/download/${videoId}`;
+
+            // UI Changes
+            document.getElementById('ytInputContainer').style.display = 'none';
+            document.getElementById('ytServers').style.display = 'flex';
+        }
+
+        function resetYoutubeModal() {
+            document.getElementById('ytInputContainer').style.display = 'block';
+            document.getElementById('ytServers').style.display = 'none';
+            document.getElementById('youtubeInput').value = '';
+        }
 
         async function confirmSave() {
             const name = document.getElementById('saveInput').value;
