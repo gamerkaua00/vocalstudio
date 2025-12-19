@@ -292,6 +292,10 @@
 </head>
 <body>
 
+    <!-- ELEMENTO DE AUDIO MUDO (Audio Unlocker) -->
+    <!-- Este elemento toca um silêncio para forçar o canal de mídia do Bluetooth a abrir -->
+    <audio id="audioUnlocker" loop playsinline style="display:none"></audio>
+
     <!-- CANVAS PARA VISUALIZER -->
     <canvas id="visualizerCanvas"></canvas>
     
@@ -435,7 +439,7 @@
         </div>
 
         <div style="text-align:center; font-size:0.7rem; color:#444; margin-top:20px;">
-            Engine V2.4: TV Fix & Stability
+            Engine V2.5: Bluetooth Audio Fix
         </div>
     </div>
 
@@ -470,6 +474,18 @@
             document.querySelector('#dynamic-manifest').setAttribute('href', manifestURL);
         }
         initPWA();
+        
+        // --- AUDIO UNLOCKER FOR BLUETOOTH ---
+        // Pequeno arquivo de silêncio para forçar o sistema a abrir canal de mídia
+        const silentBase64 = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
+        const audioUnlocker = document.getElementById('audioUnlocker');
+        audioUnlocker.src = silentBase64;
+        audioUnlocker.volume = 0.01; // Volume mínimo só para ativar
+
+        function unlockAudioSystem() {
+            // Tenta tocar o audio mudo
+            audioUnlocker.play().catch(e => console.log("Unlock blocked (user interaction needed)"));
+        }
 
         // Lógica de Instalação (Chrome/Android)
         let deferredPrompt;
@@ -539,6 +555,12 @@
         window.onload = async () => {
             await initDB();
             initVisualizer();
+            
+            // Adiciona listener global para desbloquear audio no primeiro clique
+            document.body.addEventListener('click', () => {
+                if(Tone.context.state !== 'running') Tone.context.resume();
+                unlockAudioSystem();
+            }, {once:true});
         };
 
         function nav(s) {
@@ -555,15 +577,13 @@
             // Pausa o transporte (timeline)
             Tone.Transport.pause();
             
+            // Pausa o unlocker também
+            audioUnlocker.pause();
+            
             // Para Players simples
             if(playerInstance) {
                 if(playerInstance.state === 'started') playerInstance.stop();
                 playerInstance.dispose(); playerInstance = null;
-            }
-            // Para Grain Player (NÃO disposamos aqui para não perder a engine, apenas paramos via Transport)
-            if(grainPlayer && grainPlayer.state === 'started') {
-                 // GrainPlayer segue o Transport, então pause() acima já resolve visualmente,
-                 // mas forçamos stop no elemento se necessário.
             }
             
             // Pausa player nativo
@@ -575,7 +595,7 @@
         }
 
         // --- 3. IMPORTAÇÃO ---
-        async function triggerImport() { await Tone.start(); document.getElementById('fileInput').click(); }
+        async function triggerImport() { await Tone.start(); unlockAudioSystem(); document.getElementById('fileInput').click(); }
 
         async function handleImport(files) {
             if(!files.length) return;
@@ -704,7 +724,7 @@
         }
 
         async function playPreview(id, btn) {
-            try { await Tone.start(); } catch (e) {}
+            try { await Tone.start(); unlockAudioSystem(); } catch (e) {}
             if(playerInstance && playerInstance.trackId === id && playerInstance.state === 'started') {
                 playerInstance.stop(); btn.querySelector('i').className = 'fas fa-play'; return;
             }
@@ -723,7 +743,9 @@
                     if(btn && btn.querySelector('i')) btn.querySelector('i').className = 'fas fa-play';
                     if(playerInstance) { playerInstance.dispose(); playerInstance = null; }
                 };
-                hideLoader(); playerInstance.start(); updateMediaSession(item.name); 
+                hideLoader(); playerInstance.start(); 
+                unlockAudioSystem(); // FORÇA AUDIO
+                updateMediaSession(item.name); 
                 btn.querySelector('i').className = 'fas fa-stop';
             } catch(e) { hideLoader(); showToast("Erro."); btn.querySelector('i').className = 'fas fa-play'; }
         }
@@ -792,7 +814,7 @@
 
         // --- ENGINE ---
         async function loadStudio(id) {
-            await Tone.start(); stopAllAudio();
+            await Tone.start(); unlockAudioSystem(); stopAllAudio();
             const item = library.find(t => t.id === id); if(!item) return;
             nav('studio');
             document.getElementById('studioName').innerText = item.name;
@@ -852,10 +874,15 @@
         async function togglePlay() {
             if(!grainPlayer) { showToast("Carregue uma música."); return; }
             await Tone.start();
+            unlockAudioSystem(); // GARANTIA DE AUDIO
             if(Tone.Transport.state === 'started') {
-                Tone.Transport.pause(); updateBtn(false);
+                Tone.Transport.pause(); 
+                audioUnlocker.pause();
+                updateBtn(false);
             } else {
-                Tone.Transport.start(); updateBtn(true);
+                Tone.Transport.start(); 
+                audioUnlocker.play(); // MANTEM O AUDIO ATIVO
+                updateBtn(true);
                 updateMediaSession(currentTrack.name);
             }
         }
@@ -875,17 +902,13 @@
             openModal('castModal');
         }
         function closeCastModal() {
-            // Não paramos o player nativo aqui para permitir background play se desejado,
-            // ou apenas escondemos o UI. Se for para parar ao fechar, descomente abaixo:
-            // document.getElementById('castPlayerNative').pause();
-            
             document.getElementById('nativePlayerContainer').style.display='none';
             closeModal('castModal');
         }
 
         // Opção 1: Modo TV (Visualizer + Espelhamento)
         async function activateTvMode() {
-            await Tone.start(); // Garante contexto de áudio
+            await Tone.start(); unlockAudioSystem(); // Kickstart
             closeCastModal();
             toggleTvMode(true);
             showToast("Modo TV Ativo!");
@@ -910,7 +933,7 @@
 
         // Opção 2: Player Nativo (Fallback)
         async function activateNativePlayer() {
-            await Tone.start();
+            await Tone.start(); unlockAudioSystem();
             stopAllAudio(); // Para o motor de efeitos
             
             if(!currentTrack || !currentTrack.blob) return;
@@ -943,11 +966,11 @@
                 });
                 navigator.mediaSession.setActionHandler('play', () => { 
                     if(document.getElementById('castPlayerNative').style.display === 'block') document.getElementById('castPlayerNative').play();
-                    else if(grainPlayer) { Tone.Transport.start(); updateBtn(true); }
+                    else if(grainPlayer) { Tone.Transport.start(); audioUnlocker.play(); updateBtn(true); }
                 });
                 navigator.mediaSession.setActionHandler('pause', () => { 
                     if(document.getElementById('castPlayerNative').style.display === 'block') document.getElementById('castPlayerNative').pause();
-                    else { Tone.Transport.pause(); updateBtn(false); }
+                    else { Tone.Transport.pause(); audioUnlocker.pause(); updateBtn(false); }
                 });
             }
         }
