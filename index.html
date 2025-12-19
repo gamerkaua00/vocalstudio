@@ -593,7 +593,9 @@
         }
 
         // --- MODO TV (RECEIVER) ---
-        function enterTvMode() {
+        async function enterTvMode() {
+            // Importante: Destravar Audio Context imediatamente com interação do usuário
+            await Tone.start();
             document.getElementById('tv-interface').classList.add('visible');
             // A TV já tem o Peer iniciado e mostrando o código em #tvDisplayCode
         }
@@ -646,13 +648,14 @@
         // SENDER: Funções de envio
         async function sendTrackToTV(track) {
             if(!conn) return;
-            showToast("Enviando áudio para TV...");
+            showToast("Preparando envio para TV...");
             
             // Envia metadados
             conn.send({ type: 'meta', name: track.name });
             
             // Envia o Blob do Audio
             if(track.blob) {
+                showToast("Enviando arquivo (pode demorar)...");
                 conn.send({ type: 'audio', blob: track.blob });
             }
         }
@@ -691,8 +694,12 @@
                 const blob = new Blob([data.blob]);
                 const url = URL.createObjectURL(blob);
                 
-                await Tone.start(); // User interaction already happened on "SOU A TV" click
-                if(tvPlayer) tvPlayer.dispose();
+                // Garante que o Tone está iniciado (já foi chamado no enterTvMode, mas reforça)
+                await Tone.start(); 
+                if(tvPlayer) {
+                    tvPlayer.stop();
+                    tvPlayer.dispose();
+                }
                 
                 tvPlayer = new Tone.Player(url).toDestination();
                 await tvPlayer.loaded;
@@ -706,6 +713,8 @@
             // 3. Comandos de Controle
             if(data.type === 'control') {
                 if(data.action === 'play') {
+                    // Garante inicio
+                    if(Tone.context.state !== 'running') await Tone.start();
                     Tone.Transport.start();
                     document.getElementById('tvStatus').innerText = "Reproduzindo";
                     startTVLoop();
@@ -994,7 +1003,7 @@
 
             if(currentPitch === 0 && currentFine === 0) {
                 showLoader("Salvando original...");
-                setTimeout(() => finishExport(bufferToWave(currentAudioBuffer), name), 100);
+                setTimeout(() => finishExport(bufferToWave(currentAudioBuffer, currentAudioBuffer.length), name), 100);
                 return;
             }
 
@@ -1025,7 +1034,7 @@
             }
             showLoader("Finalizando...");
             const finalBuffer = concatenateBuffers(renderedBuffers, Tone.context);
-            const wavBlob = bufferToWave(finalBuffer);
+            const wavBlob = bufferToWave(finalBuffer, finalBuffer.length);
             finishExport(wavBlob, name);
         }
 
@@ -1049,13 +1058,15 @@
             return output;
         }
 
-        function bufferToWave(abuffer) {
+        // ENCODER WAV ORIGINAL (Robusto)
+        function bufferToWave(abuffer, len) {
             const numOfChan = abuffer.numberOfChannels;
-            const length = abuffer.length * numOfChan * 2 + 44;
+            const length = len * numOfChan * 2 + 44;
             const buffer = new ArrayBuffer(length);
             const view = new DataView(buffer);
             const channels = [];
             let i, sample, offset = 0, pos = 0;
+
             function setUint16(data) { view.setUint16(pos, data, true); pos += 2; }
             function setUint32(data) { view.setUint32(pos, data, true); pos += 4; }
 
@@ -1065,11 +1076,13 @@
             setUint16(numOfChan * 2); setUint16(16); setUint32(0x61746164); setUint32(length - pos - 4);
 
             for(i = 0; i < abuffer.numberOfChannels; i++) channels.push(abuffer.getChannelData(i));
-            while(offset < abuffer.length) {
+
+            while(offset < len) {
                 for(i = 0; i < numOfChan; i++) {
                     sample = Math.max(-1, Math.min(1, channels[i][offset]));
                     sample = (sample < 0 ? sample * 0x8000 : sample * 0x7FFF) | 0;
-                    view.setInt16(pos, sample, true); pos += 2;
+                    view.setInt16(pos, sample, true); 
+                    pos += 2;
                 }
                 offset++;
             }
