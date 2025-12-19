@@ -387,9 +387,9 @@
                     <button class="m-btn m-youtube" onclick="prepareYoutubeLinks()">GERAR LINKS</button>
                 </div>
                 <!-- Nova Dica de Ouro -->
-                <div style="font-size: 0.7rem; color: var(--primary); margin-top: 15px; border: 1px dashed #333; padding: 10px; border-radius: 8px;">
-                    <i class="fas fa-magic"></i> <b>Dica Mágica:</b><br>
-                    Clique em <b>"Vincular Pasta"</b> na biblioteca e escolha onde você salva os downloads. Assim a música aparece sozinha aqui!
+                <div style="font-size: 0.7rem; color: #888; margin-top: 15px; border: 1px dashed #333; padding: 10px; border-radius: 8px;">
+                    <i class="fas fa-mobile-alt"></i> <b>No Android:</b><br>
+                    Baixe o arquivo, volte aqui e selecione ele na pasta Downloads quando o site pedir.
                 </div>
             </div>
 
@@ -409,10 +409,25 @@
                 </a>
 
                 <div style="font-size: 0.6rem; color: #555; margin-top: 15px;">
-                    *Salve na pasta vinculada para importar automaticamente ao voltar.
+                    *Se um falhar, tente o próximo.
                 </div>
                 <button class="m-btn m-cancel" style="margin-top:10px; width:100%" onclick="resetYoutubeModal()">Voltar</button>
             </div>
+        </div>
+    </div>
+
+    <!-- MODAL PÓS-DOWNLOAD (Android Fix) -->
+    <div id="postDownloadModal" class="overlay">
+        <div class="modal-box" style="border-color: var(--primary);">
+            <div style="font-size:3rem; color:var(--primary); margin-bottom:10px;"><i class="fas fa-check-circle"></i></div>
+            <h3 style="margin:0; color:white; margin-bottom:10px;">Voltou do Download?</h3>
+            <p style="color:#aaa; font-size:0.9rem; margin-bottom:20px;">
+                Clique abaixo para pegar o arquivo MP3 que você acabou de baixar na pasta <b>Downloads</b>.
+            </p>
+            <button class="btn-add-music" onclick="triggerImport()" style="background: var(--primary); color:black; font-weight:bold;">
+                <i class="fas fa-folder-open"></i> SELECIONAR ARQUIVO BAIXADO
+            </button>
+            <button class="m-btn m-cancel" style="margin-top:15px; width:100%;" onclick="closeModal('postDownloadModal')">Cancelar</button>
         </div>
     </div>
 
@@ -660,22 +675,26 @@
         window.onfocus = async () => {
             if(isWaitingForDownload) {
                 isWaitingForDownload = false; // Reset flag
-                const handle = await getFolderHandle();
+                closeModal('youtubeModal'); // Fecha o modal do Youtube
                 
+                const handle = await getFolderHandle();
+                let autoScanWorks = false;
+
                 if(handle) {
-                    // Tenta verificar permissão silenciosamente ou pedir
                     try {
+                        // Tenta scanear silenciosamente
                         if(await verifyPermission(handle, false)) {
                             showToast("Procurando novos arquivos...");
-                            await scanDirectory(handle, true); // True = Silent Mode (mas mostra toast se achar)
-                        } else {
-                            showToast("Permissão de pasta expirou. Revincule.");
+                            await scanDirectory(handle, true);
+                            autoScanWorks = true;
                         }
                     } catch(e) { console.log(e); }
-                } else {
-                    showToast("Dica: Vincule a pasta Downloads para importar automático!");
-                    setTimeout(() => document.getElementById('btnLinkFolder').classList.add('active'), 500);
-                    setTimeout(() => document.getElementById('btnLinkFolder').classList.remove('active'), 2000);
+                } 
+                
+                // SE NÃO CONSEGUIR ESCANEAR AUTOMÁTICO (Caso Android/Sem Permissão)
+                // Abre o modal para o usuário selecionar manualmente
+                if(!autoScanWorks) {
+                    openModal('postDownloadModal');
                 }
             }
         };
@@ -1045,6 +1064,7 @@
 
         async function triggerImport() { await Tone.start(); document.getElementById('fileInput').click(); }
         async function handleImport(files) {
+            if(isWaitingForDownload) { closeModal('postDownloadModal'); isWaitingForDownload = false; }
             if(!files.length) return;
             showLoader("Importando...");
             const filesArray = Array.from(files);
