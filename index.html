@@ -260,7 +260,7 @@
         @keyframes pulse-shadow { 0% { box-shadow: 0 0 20px rgba(0, 230, 118, 0.1); } 50% { box-shadow: 0 0 50px rgba(0, 230, 118, 0.3); } 100% { box-shadow: 0 0 20px rgba(0, 230, 118, 0.1); } }
         
         .tv-title { font-size: 3rem; font-weight: 900; margin-bottom: 10px; color: var(--primary); text-shadow: 0 2px 10px rgba(0,0,0,0.5); }
-        .tv-status { font-size: 1.5rem; color: #888; margin-bottom: 40px; text-transform: uppercase; letter-spacing: 2px; }
+        .tv-status { font-size: 1.5rem; color: #888; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 2px; }
         
         .tv-progress-container { width: 100%; height: 10px; background: #333; border-radius: 5px; overflow: hidden; margin-bottom: 20px; position: relative;}
         .tv-progress-bar { width: 0%; height: 100%; background: var(--primary); transition: width 0.2s linear; }
@@ -274,7 +274,7 @@
 
         /* NOVOS CONTROLES DE TV */
         .tv-controls {
-            display: flex; justify-content: center; gap: 20px; margin-top: 30px;
+            display: flex; justify-content: center; gap: 20px; margin-top: 20px; flex-wrap: wrap;
         }
         .tv-btn {
             background: #222; color: white; border: 2px solid #444;
@@ -284,6 +284,8 @@
         .tv-btn:hover { background: #333; border-color: var(--primary); }
         .tv-btn:active { transform: scale(0.95); }
         .tv-btn i { font-size: 1.2rem; }
+        
+        .tv-debug { font-size: 0.8rem; color: #555; margin-top: 10px; }
     </style>
 </head>
 <body>
@@ -301,6 +303,9 @@
                     <div id="tvDisplayCode" class="connect-code">...</div>
                 </div>
                 <div id="tvConnStatus" style="margin-top:20px; color:#888;">Aguardando conexão do celular...</div>
+                <button class="tv-btn" onclick="tvEnableAudio()" style="margin-top:20px; padding:10px 20px; font-size:1rem;">
+                    <i class="fas fa-volume-up"></i> ATIVAR SOM (CLIQUE AQUI)
+                </button>
             </div>
 
             <!-- TELA DE PLAYER (APÓS CONEXÃO) -->
@@ -316,11 +321,16 @@
                     <span id="tvCurrentTime">00:00</span>
                     <span id="tvDuration">00:00</span>
                 </div>
+                
+                <div class="tv-debug" id="tvDebugInfo">Status do Sistema: Aguardando</div>
 
                 <!-- CONTROLES MANUAIS NA TV -->
                 <div class="tv-controls">
                     <button class="tv-btn" onclick="tvManualToggle()">
                         <i class="fas fa-play" id="tvPlayIcon"></i> PLAY / PAUSE
+                    </button>
+                    <button class="tv-btn" onclick="tvEnableAudio()" style="border-color:#ff9100;">
+                        <i class="fas fa-volume-up"></i> ATIVAR SOM
                     </button>
                 </div>
             </div>
@@ -356,17 +366,23 @@
     <div id="tvHelpModal" class="overlay">
         <div class="modal-box">
             <h3 style="margin:0; color:var(--primary); margin-bottom:10px;"><i class="fas fa-mobile-alt"></i> Conectar à TV</h3>
-            <p style="color:#ccc; font-size:0.9rem; margin-bottom:20px;">
-                1. Abra este site na TV e clique em <b>"SOU A TV"</b>.<br>
-                2. Digite o código que aparece na TV:
-            </p>
             
-            <input type="text" id="mobileCodeInput" placeholder="Ex: A1B2" style="font-size:1.5rem; padding:15px; text-align:center; border-radius:10px; border:1px solid #444; width:100%; text-transform:uppercase; background:#000; color:white; margin-bottom:15px;">
-            
-            <button onclick="connectToTV()" style="width:100%; font-size:1.2rem; padding:15px; background:var(--primary); border:none; border-radius:10px; cursor:pointer; font-weight:bold; color:black;">CONECTAR</button>
+            <div id="connectForm">
+                <p style="color:#ccc; font-size:0.9rem; margin-bottom:20px;">
+                    1. Abra este site na TV e clique em <b>"SOU A TV"</b>.<br>
+                    2. Digite o código que aparece na TV:
+                </p>
+                <input type="text" id="mobileCodeInput" placeholder="Ex: A1B2" style="font-size:1.5rem; padding:15px; text-align:center; border-radius:10px; border:1px solid #444; width:100%; text-transform:uppercase; background:#000; color:white; margin-bottom:15px;">
+                <button onclick="connectToTV()" style="width:100%; font-size:1.2rem; padding:15px; background:var(--primary); border:none; border-radius:10px; cursor:pointer; font-weight:bold; color:black;">CONECTAR</button>
+            </div>
+
+            <div id="disconnectForm" style="display:none;">
+                <p style="color:#ccc; font-size:1rem; margin-bottom:20px;">Conectado à TV.</p>
+                <button onclick="disconnectFromTV()" style="width:100%; font-size:1.2rem; padding:15px; background:var(--danger); border:none; border-radius:10px; cursor:pointer; font-weight:bold; color:white;">PARAR TRANSMISSÃO</button>
+            </div>
 
             <div class="modal-btns" style="margin-top:20px;">
-                <button class="m-btn m-cancel" onclick="closeModal('tvHelpModal')">Cancelar</button>
+                <button class="m-btn m-cancel" onclick="closeModal('tvHelpModal')">Fechar</button>
             </div>
         </div>
     </div>
@@ -614,36 +630,39 @@
 
         // --- MODO TV (RECEIVER) ---
         async function enterTvMode() {
-            // Importante: Tenta destravar o AudioContext IMEDIATAMENTE no clique
-            // Para TVs que exigem som: toca um oscilador silencioso
+            document.getElementById('tv-interface').classList.add('visible');
+            tvEnableAudio(); // Tenta ativar audio logo de cara
+        }
+
+        async function tvEnableAudio() {
             try {
                 await Tone.start();
+                if(Tone.context.state !== 'running') await Tone.context.resume();
                 
-                // Cria um oscilador silencioso e toca por um instante para "acordar" o hardware de som
-                const silentOsc = new Tone.Oscillator(440, "sine").toDestination();
-                silentOsc.volume.value = -Infinity; // Silêncio total
-                silentOsc.start().stop("+0.1"); // Toca 0.1s
+                // Som de teste para ativar hardware
+                const osc = new Tone.Oscillator(440, "sine").toDestination();
+                osc.volume.value = -100; // Mute
+                osc.start().stop("+0.1");
                 
-                console.log("Audio Context Force Started");
+                document.getElementById('tvDebugInfo').innerText = "Status: Áudio Ativo (" + Tone.context.state + ")";
+                document.getElementById('tvDebugInfo').style.color = "#00e676";
             } catch(e) {
-                console.log("Audio unlock failed:", e);
+                console.log(e);
+                document.getElementById('tvDebugInfo').innerText = "Erro ao ativar som: " + e;
             }
-
-            document.getElementById('tv-interface').classList.add('visible');
-            // A TV já tem o Peer iniciado e mostrando o código em #tvDisplayCode
         }
 
         // --- MODO MOBILE (SENDER) ---
         function openSenderModal() {
-            // Se já conectado, avisa para desconectar
+            // Verifica conexão ativa
             if(conn && conn.open) {
-                if(confirm("Desconectar da TV?")) {
-                    conn.close(); conn = null;
-                    document.getElementById('btnTV').classList.remove('active-cast');
-                }
+                document.getElementById('connectForm').style.display = 'none';
+                document.getElementById('disconnectForm').style.display = 'block';
             } else {
-                openModal('tvHelpModal');
+                document.getElementById('connectForm').style.display = 'block';
+                document.getElementById('disconnectForm').style.display = 'none';
             }
+            openModal('tvHelpModal');
         }
 
         function connectToTV() {
@@ -675,7 +694,18 @@
             conn.on('close', () => {
                document.getElementById('btnTV').classList.remove('active-cast');
                showToast("Desconectado.");
+               conn = null;
             });
+        }
+
+        function disconnectFromTV() {
+            if(conn) {
+                conn.close();
+                conn = null;
+            }
+            document.getElementById('btnTV').classList.remove('active-cast');
+            closeModal('tvHelpModal');
+            showToast("Transmissão encerrada.");
         }
 
         // SENDER: Funções de envio
@@ -719,7 +749,11 @@
 
         // FUNÇÕES MANUAIS TV
         async function tvManualToggle() {
-            if(Tone.context.state !== 'running') await Tone.start();
+            // Força resume do contexto
+            if(Tone.context.state !== 'running') {
+                await Tone.start();
+                await Tone.context.resume();
+            }
             
             if(Tone.Transport.state === 'started') {
                 Tone.Transport.pause();
@@ -740,7 +774,7 @@
             }
             // 2. Recebimento de Áudio
             if(data.type === 'audio') {
-                document.getElementById('tvStatus').innerText = "Recebido. Processando...";
+                document.getElementById('tvStatus').innerText = "Recebido. Decodificando...";
                 
                 try {
                     // Garante ArrayBuffer
@@ -784,6 +818,9 @@
                     tvPlayer = new Tone.Player(audioBuffer);
                     tvPlayer.toDestination();
                     
+                    // Força volume máximo no destino para garantir que não esteja mudo
+                    Tone.Destination.volume.value = 0; 
+                    
                     // Explicitly wait or check loaded
                     if(!tvPlayer.loaded) {
                          console.warn("Player not loaded immediately, waiting...");
@@ -798,9 +835,11 @@
 
                     // Update UI
                     const dur = tvPlayer.buffer.duration;
-                    document.getElementById('tvStatus').innerText = "Pronto - Aperte Play no Celular ou Abaixo";
+                    document.getElementById('tvStatus').innerText = "Pronto - Aperte Play";
                     document.getElementById('tvDuration').innerText = formatTime(dur);
                     document.getElementById('tvPlayIcon').className = "fas fa-play";
+                    
+                    document.getElementById('tvDebugInfo').innerText = "Status: Áudio Carregado (" + Tone.context.state + ")";
 
                     // AUTO PLAY SE ESTIVER PENDENTE
                     if(pendingPlayCommand) {
@@ -824,8 +863,12 @@
                         pendingPlayCommand = true;
                         document.getElementById('tvStatus').innerText = "Carregando... (Play Agendado)";
                     } else {
-                        // Garante inicio
-                        if(Tone.context.state !== 'running') await Tone.start();
+                        // Garante inicio e resume context
+                        if(Tone.context.state !== 'running') {
+                            await Tone.start();
+                            await Tone.context.resume();
+                        }
+                        
                         Tone.Transport.start();
                         document.getElementById('tvStatus').innerText = "Reproduzindo";
                         document.getElementById('tvPlayIcon').className = "fas fa-pause";
