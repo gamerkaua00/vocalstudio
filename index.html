@@ -7,7 +7,7 @@
     <meta name="description" content="Editor de áudio vocal simples via web - PWA Enabled">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>VocalStudio Pro (Cast Edition)</title>
+    <title>VocalStudio Pro (TV Mode)</title>
     
     <!-- Placeholder para Manifest Dinâmico -->
     <link rel="manifest" id="dynamic-manifest">
@@ -57,13 +57,32 @@
         .logo { font-weight: 900; font-size: 1.2rem; letter-spacing: 1px; }
         .logo span { color: var(--primary); }
 
-        /* VISUALIZER */
-        #visualizer {
-            position: absolute;
-            bottom: 0; left: 0;
-            width: 100%; height: 2px;
-            background: rgba(255,255,255,0.1);
+        /* VISUALIZER BACKGROUND (FullScreen Mode) */
+        #visualizerCanvas {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+            z-index: -1; opacity: 0.3; pointer-events: none; transition: opacity 0.5s;
         }
+        body.tv-mode #visualizerCanvas {
+            z-index: 6000; opacity: 1; background: #000;
+        }
+        
+        /* Botão Sair TV Mode */
+        #exitTvBtn {
+            display: none; position: fixed; top: 30px; right: 30px; z-index: 6001;
+            background: rgba(0,0,0,0.5); color: white; border: 1px solid #fff;
+            padding: 10px 20px; border-radius: 30px; font-weight: bold; cursor: pointer;
+        }
+        body.tv-mode #exitTvBtn { display: block; }
+        
+        /* TV Mode Info Overlay */
+        #tvInfo {
+            display: none; position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%);
+            z-index: 6001; text-align: center; width: 80%;
+        }
+        body.tv-mode #tvInfo { display: block; }
+        .tv-track-name { font-size: 2rem; font-weight: 900; color: #fff; text-shadow: 0 0 20px rgba(0,230,118,0.5); }
+        .tv-artist { font-size: 1.2rem; color: #aaa; margin-top: 10px; }
+
 
         /* Botão PWA */
         #btnInstall {
@@ -245,6 +264,8 @@
         .m-btn { flex: 1; padding: 12px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; }
         .m-confirm { background: var(--primary); color: black; }
         .m-cancel { background: #333; color: #ccc; }
+        .m-action { background: #333; color: white; border: 1px solid #555; margin-bottom: 10px; width: 100%; text-align: left; display: flex; align-items: center; gap: 10px; }
+        .m-action:hover { background: #444; }
 
         /* Estilo para Player Nativo de Cast */
         #castPlayerNative {
@@ -252,6 +273,7 @@
             margin: 15px 0;
             border-radius: 8px;
             outline: none;
+            display: none; /* Escondido por padrão */
         }
 
         #loader { z-index: 4000; flex-direction: column; }
@@ -271,7 +293,15 @@
 <body>
 
     <!-- CANVAS PARA VISUALIZER -->
-    <canvas id="visualizerCanvas" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; z-index: -1; opacity: 0.2; pointer-events: none;"></canvas>
+    <canvas id="visualizerCanvas"></canvas>
+    
+    <!-- ELEMENTOS DO MODO TV -->
+    <button id="exitTvBtn" onclick="toggleTvMode(false)"><i class="fas fa-times"></i> Sair do Modo TV</button>
+    <div id="tvInfo">
+        <div class="tv-track-name" id="tvTrackName">Nome da Música</div>
+        <div class="tv-artist">VocalStudio Pro</div>
+        <div style="margin-top:20px; font-size:0.9rem; color:#888;">Use o Espelhamento de Tela (Cast/AirPlay) do seu celular</div>
+    </div>
 
     <!-- MODAL RENOMEAR -->
     <div id="renameModal" class="overlay">
@@ -297,16 +327,40 @@
         </div>
     </div>
 
-    <!-- MODAL DE TRANSMISSÃO (CAST) -->
+    <!-- MODAL DE CONEXÃO (CAST) -->
     <div id="castModal" class="overlay">
-        <div class="modal-box" style="background:#222;">
-            <h3 style="margin:0; color:var(--cast)"><i class="fas fa-broadcast-tower"></i> Transmissão</h3>
-            <p style="font-size:0.8rem; color:#aaa; margin-top:10px;">
-                Use o player nativo abaixo para transmitir via Bluetooth, AirPlay ou Espelhamento. <br>
-                <span style="color:var(--danger)">Atenção: Efeitos de voz não são aplicados na transmissão direta. Salve a edição primeiro se quiser os efeitos.</span>
+        <div class="modal-box" style="background:#222; text-align: left;">
+            <h3 style="margin:0 0 15px 0; color:var(--cast); text-align: center;"><i class="fas fa-broadcast-tower"></i> Conectar à TV</h3>
+            
+            <p style="font-size:0.8rem; color:#aaa; margin-bottom:15px; text-align:center;">
+                Escolha a melhor opção para o seu dispositivo:
             </p>
-            <audio id="castPlayerNative" controls></audio>
-            <div class="modal-btns">
+
+            <!-- OPÇÃO 1: MODO TV -->
+            <button class="m-btn m-action" onclick="activateTvMode()">
+                <i class="fas fa-tv" style="font-size:1.5rem; color:var(--primary)"></i>
+                <div>
+                    <div style="font-weight:bold">Modo TV (Visualizer)</div>
+                    <div style="font-size:0.7rem; color:#888">Ative o "Espelhar Tela" do celular para ver na TV com efeitos.</div>
+                </div>
+            </button>
+
+            <!-- OPÇÃO 2: NATIVO -->
+            <button class="m-btn m-action" onclick="activateNativePlayer()">
+                <i class="fab fa-apple" style="font-size:1.5rem; color:#fff"></i>
+                <div>
+                    <div style="font-weight:bold">Player Nativo (AirPlay/Bluetooth)</div>
+                    <div style="font-size:0.7rem; color:#888">Ideal para iOS ou Bluetooth simples. (Sem efeitos visuais)</div>
+                </div>
+            </button>
+
+            <!-- PLAYER NATIVO (Escondido até clicar) -->
+            <div id="nativePlayerContainer" style="display:none; margin-top:10px; text-align:center; background:#000; padding:10px; border-radius:8px;">
+                <div style="font-size:0.7rem; color:#f00; margin-bottom:5px;">Aviso: Efeitos de voz desativados neste modo.</div>
+                <audio id="castPlayerNative" controls></audio>
+            </div>
+
+            <div class="modal-btns" style="margin-top:15px;">
                 <button class="m-btn m-cancel" onclick="closeCastModal()">Fechar</button>
             </div>
         </div>
@@ -318,7 +372,6 @@
             <div id="dbStatus" style="font-size:0.7rem; color:#444; margin-left: 10px;">Init...</div>
         </div>
         <button id="btnInstall" onclick="installApp()"><i class="fas fa-download"></i> INSTALAR APP</button>
-        <div id="visualizer"></div>
     </header>
 
     <div class="tabs">
@@ -382,14 +435,14 @@
         </div>
 
         <div style="text-align:center; font-size:0.7rem; color:#444; margin-top:20px;">
-            Engine V2.2: Transporte Sincronizado (Resume Fix)
+            Engine V2.3: TV Mode + MediaSession Fix
         </div>
     </div>
 
     <!-- PLAYER BAR -->
     <div class="player-bar">
         <button class="p-btn btn-main-play" id="btnPlay" onclick="togglePlay()"><i class="fas fa-play"></i> OUVIR</button>
-        <button class="p-btn btn-main-cast" id="btnCast" onclick="openCastModal()"><i class="fas fa-broadcast-tower"></i></button>
+        <button class="p-btn btn-main-cast" id="btnCast" onclick="openCastModal()"><i class="fas fa-tv"></i></button>
         <button class="p-btn btn-main-save" id="btnSave" onclick="openSaveModal()"><i class="fas fa-share-alt"></i> ENVIAR</button>
     </div>
 
@@ -397,7 +450,7 @@
     <div id="toast">Aviso</div>
 
     <script>
-        // --- 0. PWA BOOTSTRAP (HACKER MODE) ---
+        // --- 0. PWA BOOTSTRAP ---
         function initPWA() {
             const manifest = {
                 "name": "VocalStudio",
@@ -408,11 +461,7 @@
                 "theme_color": "#000000",
                 "orientation": "portrait",
                 "icons": [
-                    {
-                        "src": "https://cdn-icons-png.flaticon.com/512/3039/3039462.png",
-                        "sizes": "512x512",
-                        "type": "image/png"
-                    }
+                    { "src": "https://cdn-icons-png.flaticon.com/512/3039/3039462.png", "sizes": "512x512", "type": "image/png" }
                 ]
             };
             const stringManifest = JSON.stringify(manifest);
@@ -450,15 +499,10 @@
         function initDB() {
             return new Promise((resolve) => {
                 const req = indexedDB.open(DB_NAME, DB_VERSION);
-                
                 req.onupgradeneeded = e => {
                     db = e.target.result;
-                    if(!db.objectStoreNames.contains('tracks')) {
-                        db.createObjectStore('tracks', {keyPath:'id', autoIncrement:true});
-                    }
-                    if(!db.objectStoreNames.contains('settings')) {
-                        db.createObjectStore('settings');
-                    }
+                    if(!db.objectStoreNames.contains('tracks')) db.createObjectStore('tracks', {keyPath:'id', autoIncrement:true});
+                    if(!db.objectStoreNames.contains('settings')) db.createObjectStore('settings');
                 };
                 req.onsuccess = e => { 
                     db = e.target.result; 
@@ -469,10 +513,7 @@
                     checkAutoScanFolder();
                     resolve();
                 };
-                req.onerror = () => { 
-                    document.getElementById('dbStatus').innerText = "DB Error"; 
-                    resolve(); 
-                };
+                req.onerror = () => { document.getElementById('dbStatus').innerText = "DB Error"; resolve(); };
             });
         }
 
@@ -491,7 +532,7 @@
         // Visualizer
         let analyser = null;
         let visualizerContext = null;
-        let isVisualizerRunning = false;
+        let isTvMode = false;
 
         const CHUNK_DURATION = 15;
 
@@ -505,62 +546,43 @@
             document.querySelectorAll('.screen').forEach(el => el.classList.remove('active'));
             document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
             document.getElementById('screen-'+s).classList.add('active');
-            
             const tabs = document.querySelectorAll('.tab-btn');
             if(s === 'library') tabs[0].classList.add('active');
             else tabs[1].classList.add('active');
         }
 
         function stopAllAudio() {
-            // Parar Tone.Transport (Engine de Resumo)
             Tone.Transport.pause();
-            
-            // Parar Tone.js Players
             if(playerInstance) {
                 if(playerInstance.state === 'started') playerInstance.stop();
-                playerInstance.dispose();
-                playerInstance = null;
+                playerInstance.dispose(); playerInstance = null;
             }
             if(grainPlayer) {
-                // Não damos stop() direto aqui pois usamos Transport, mas por segurança para limpeza:
                 if(grainPlayer.state === 'started') grainPlayer.stop();
             }
-            
-            // Parar Cast Native Player
             const nativeP = document.getElementById('castPlayerNative');
             nativeP.pause();
-            
             updateBtn(false);
             document.querySelectorAll('.btn-play i').forEach(i=>i.className='fas fa-play');
         }
 
-        // --- 3. IMPORTAÇÃO MANUAL E AUTOMÁTICA ---
-        async function triggerImport() {
-            await Tone.start();
-            document.getElementById('fileInput').click();
-        }
+        // --- 3. IMPORTAÇÃO ---
+        async function triggerImport() { await Tone.start(); document.getElementById('fileInput').click(); }
 
         async function handleImport(files) {
             if(!files.length) return;
             showLoader("Importando...");
             const filesArray = Array.from(files);
-            
             for (const file of filesArray) {
                 if (file.name.match(/\.(mp3|wav|aac|ogg|m4a)$/i) && file.size > 100) {
                     try {
                         const name = file.name.replace(/\.[^/.]+$/, "");
                         const exists = library.find(t => t.name === name);
-                        if (!exists) {
-                            await saveToDB(file, name);
-                        }
-                    } catch(e) {
-                        console.error("Erro ao salvar:", file.name);
-                    }
+                        if (!exists) await saveToDB(file, name);
+                    } catch(e) {}
                 }
             }
-            await loadTracks(); 
-            hideLoader(); 
-            showToast("Importação concluída!");
+            await loadTracks(); hideLoader(); showToast("Importação concluída!");
             document.getElementById('fileInput').value = '';
             document.getElementById('legacyFolderInput').value = '';
         }
@@ -571,15 +593,9 @@
                     const dirHandle = await window.showDirectoryPicker();
                     await saveFolderHandle(dirHandle);
                     await scanDirectory(dirHandle);
-                    showToast("Pasta vinculada e escaneada!");
+                    showToast("Pasta vinculada!");
                     return;
-                } catch (err) {
-                    if (err.name === 'SecurityError' || err.code === 18) {
-                        console.warn("FSA API bloqueada pelo navegador, ativando modo legado.");
-                    } else if (err.name === 'AbortError') {
-                        return;
-                    }
-                }
+                } catch (err) {}
             }
             document.getElementById('legacyFolderInput').click();
         }
@@ -591,7 +607,6 @@
                 tx.oncomplete = () => resolve();
             });
         }
-
         async function getFolderHandle() {
             return new Promise(resolve => {
                 const tx = db.transaction(['settings'], 'readonly');
@@ -600,63 +615,35 @@
                 req.onerror = () => resolve(null);
             });
         }
-
         async function verifyPermission(fileHandle, readWrite) {
-            const options = {};
-            if (readWrite) { options.mode = 'readwrite'; }
-            if ((await fileHandle.queryPermission(options)) === 'granted') {
-                return true;
-            }
-            if ((await fileHandle.requestPermission(options)) === 'granted') {
-                return true;
-            }
+            const options = {}; if (readWrite) options.mode = 'readwrite';
+            if ((await fileHandle.queryPermission(options)) === 'granted') return true;
+            if ((await fileHandle.requestPermission(options)) === 'granted') return true;
             return false;
         }
-
         async function checkAutoScanFolder() {
             const handle = await getFolderHandle();
             if (handle) {
                 try {
-                    const hasPerm = await verifyPermission(handle, false);
-                    if(hasPerm) {
-                        await scanDirectory(handle, true);
-                    } else {
-                        showToast("Reconecte a pasta para sincronizar.");
-                    }
-                } catch(e) {
-                    console.log("Auto-scan não permitido neste contexto.");
-                }
+                    if(await verifyPermission(handle, false)) await scanDirectory(handle, true);
+                    else showToast("Reconecte a pasta.");
+                } catch(e) {}
             }
         }
-
         async function scanDirectory(dirHandle, silent = false) {
             if(!silent) showLoader("Varrendo pasta...");
-            
             try {
                 for await (const entry of dirHandle.values()) {
                     if (entry.kind === 'file') {
                         if(entry.name.match(/\.(mp3|wav|aac|ogg|m4a)$/i)) {
                             const file = await entry.getFile();
                             const name = file.name.replace(/\.[^/.]+$/, "");
-                            const exists = library.find(t => t.name === name);
-                            if(!exists) {
-                                await saveToDB(file, name);
-                            }
+                            if(!library.find(t => t.name === name)) await saveToDB(file, name);
                         }
-                    } else if (entry.kind === 'directory') {
-                        await scanDirectory(entry, true);
-                    }
+                    } else if (entry.kind === 'directory') await scanDirectory(entry, true);
                 }
-                if(!silent) {
-                    await loadTracks();
-                    hideLoader();
-                } else {
-                    loadTracks();
-                }
-            } catch (err) {
-                console.error("Erro no scan:", err);
-                if(!silent) hideLoader();
-            }
+                if(!silent) { await loadTracks(); hideLoader(); } else loadTracks();
+            } catch (err) { if(!silent) hideLoader(); }
         }
 
         function saveToDB(blob, name) {
@@ -664,11 +651,9 @@
                 if(!dbReady) { resolve(); return; }
                 const tx = db.transaction(['tracks'], 'readwrite');
                 tx.objectStore('tracks').add({name:name, blob:blob, date:Date.now()});
-                tx.oncomplete = () => resolve();
-                tx.onerror = () => resolve();
+                tx.oncomplete = () => resolve(); tx.onerror = () => resolve();
             });
         }
-
         function loadTracks() {
             if(!dbReady) return;
             const tx = db.transaction(['tracks'], 'readonly');
@@ -678,26 +663,18 @@
             };
         }
 
-        // --- 4. RENDERIZAR BIBLIOTECA ---
         function renderLib() {
             const list = document.getElementById('libList');
             list.innerHTML = "";
-            
-            if(!library.length) {
-                list.innerHTML = `<div style="text-align:center; padding:40px; color:#444"><i class="fas fa-music" style="font-size:2rem; margin-bottom:10px;"></i><br>Biblioteca vazia</div>`;
-                return;
-            }
-
+            if(!library.length) { list.innerHTML = `<div style="text-align:center; padding:40px; color:#444">Biblioteca vazia</div>`; return; }
             library.forEach(item => {
-                const size = (item.blob.size/1024/1024).toFixed(1)+"MB";
                 const div = document.createElement('div');
                 div.className = 'music-item';
                 if(currentTrack && currentTrack.id === item.id) div.classList.add('active-track');
-                
                 div.innerHTML = `
                     <div class="music-info">
                         <div class="music-name">${item.name}</div>
-                        <div class="music-date">${new Date(item.date).toLocaleDateString()} • ${size}</div>
+                        <div class="music-date">${(item.blob.size/1024/1024).toFixed(1)}MB</div>
                     </div>
                     <div class="music-actions">
                         <div class="action-group">
@@ -705,7 +682,6 @@
                             <button class="act-btn btn-edit" onclick="loadStudio(${item.id})"><i class="fas fa-sliders-h"></i></button>
                         </div>
                         <div class="action-group">
-                            <button class="act-btn btn-rename" onclick="promptRename(${item.id})"><i class="fas fa-pen"></i></button>
                             <button class="act-btn btn-share" onclick="shareItem(${item.id})"><i class="fab fa-whatsapp"></i></button>
                             <button class="act-btn btn-del" onclick="deleteTrack(${item.id})"><i class="fas fa-trash"></i></button>
                         </div>
@@ -716,53 +692,32 @@
         }
 
         async function getAudioBuffer(blob) {
-            try {
-                const arrayBuffer = await blob.arrayBuffer();
-                return await Tone.context.decodeAudioData(arrayBuffer);
-            } catch (e) {
-                throw new Error("Formato não suportado ou arquivo corrompido.");
-            }
+            try { return await Tone.context.decodeAudioData(await blob.arrayBuffer()); } catch (e) { throw new Error("Erro arquivo."); }
         }
 
         async function playPreview(id, btn) {
             try { await Tone.start(); } catch (e) {}
-            
             if(playerInstance && playerInstance.trackId === id && playerInstance.state === 'started') {
-                playerInstance.stop();
-                btn.querySelector('i').className = 'fas fa-play';
-                return;
+                playerInstance.stop(); btn.querySelector('i').className = 'fas fa-play'; return;
             }
-
             stopAllAudio();
             const item = library.find(t => t.id === id);
             if(!item) return;
             currentTrack = item; 
-            
             showLoader("Carregando...");
             btn.querySelector('i').className = 'fas fa-spinner fa-spin';
-
             try {
                 const audioBuffer = await getAudioBuffer(item.blob);
                 playerInstance = new Tone.Player(audioBuffer).toDestination();
                 playerInstance.trackId = id;
-                
-                // Conectar Analyser (Visualizer)
                 connectAnalyser(playerInstance);
-                
                 playerInstance.onstop = () => {
                     if(btn && btn.querySelector('i')) btn.querySelector('i').className = 'fas fa-play';
                     if(playerInstance) { playerInstance.dispose(); playerInstance = null; }
                 };
-                
-                hideLoader();
-                playerInstance.start();
-                updateMediaSession(item.name); 
+                hideLoader(); playerInstance.start(); updateMediaSession(item.name); 
                 btn.querySelector('i').className = 'fas fa-stop';
-            } catch(e) {
-                hideLoader();
-                showToast("Erro ao abrir áudio.");
-                btn.querySelector('i').className = 'fas fa-play';
-            }
+            } catch(e) { hideLoader(); showToast("Erro."); btn.querySelector('i').className = 'fas fa-play'; }
         }
 
         // --- VISUALIZER ---
@@ -776,115 +731,97 @@
             canvas.style.display = 'block';
             drawVisualizer();
         }
-
-        function connectAnalyser(source) {
-            if(analyser) source.connect(analyser);
-        }
-
+        function connectAnalyser(source) { if(analyser) source.connect(analyser); }
         function drawVisualizer() {
             requestAnimationFrame(drawVisualizer);
             if(!analyser) return;
-
-            const bufferLength = analyser.frequencyBinCount;
-            const dataArray = new Uint8Array(bufferLength);
-            analyser.getByteFrequencyData(dataArray);
-
             const canvas = document.getElementById('visualizerCanvas');
             const ctx = visualizerContext;
             const width = canvas.width;
             const height = canvas.height;
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            analyser.getByteFrequencyData(dataArray);
 
             ctx.clearRect(0, 0, width, height);
             
-            // Verifica se tem som tocando
+            // Se estiver em modo TV, desenha um visualizador mais "grosso" e centralizado
+            if(isTvMode) {
+                 const centerX = width / 2;
+                 const centerY = height / 2;
+                 const radius = 100;
+                 
+                 ctx.beginPath();
+                 ctx.strokeStyle = `var(--primary)`;
+                 ctx.lineWidth = 4;
+                 
+                 for (let i = 0; i < bufferLength; i++) {
+                     const barHeight = dataArray[i];
+                     const rad = (i / bufferLength) * 2 * Math.PI;
+                     const x = centerX + Math.cos(rad) * (radius + barHeight);
+                     const y = centerY + Math.sin(rad) * (radius + barHeight);
+                     if(i===0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                 }
+                 ctx.closePath();
+                 ctx.stroke();
+                 return;
+            }
+
+            // Visualizer Padrão (Barra inferior)
             const hasSound = dataArray.some(val => val > 0);
             if(!hasSound) return;
-
             ctx.beginPath();
             const barWidth = (width / bufferLength) * 2.5;
             let barHeight;
             let x = 0;
-
             for(let i = 0; i < bufferLength; i++) {
                 barHeight = dataArray[i];
-                // Gradiente baseado na amplitude
                 ctx.fillStyle = `rgba(${barHeight + 50}, 255, 100, 0.3)`;
                 ctx.fillRect(x, height - barHeight, barWidth, barHeight);
                 x += barWidth + 1;
             }
         }
 
-        // --- ESTÚDIO E RENDERIZAÇÃO OTIMIZADA ---
+        // --- ENGINE ---
         async function loadStudio(id) {
-            await Tone.start();
-            stopAllAudio();
-            const item = library.find(t => t.id === id);
-            if(!item) return;
-
+            await Tone.start(); stopAllAudio();
+            const item = library.find(t => t.id === id); if(!item) return;
             nav('studio');
             document.getElementById('studioName').innerText = item.name;
             document.getElementById('studioStatus').innerText = "Carregando...";
             showLoader("Preparando Estúdio...");
-
             try {
                 const buffer = await getAudioBuffer(item.blob);
-                currentTrack = item;
-                setupEngine(buffer);
-            } catch(e) {
-                hideLoader();
-                showToast("Erro: Áudio inválido.");
-            }
+                currentTrack = item; setupEngine(buffer);
+            } catch(e) { hideLoader(); showToast("Erro."); }
         }
 
         function setupEngine(buffer) {
-            // Limpeza
-            Tone.Transport.stop();
-            Tone.Transport.cancel();
+            Tone.Transport.stop(); Tone.Transport.cancel();
             if(grainPlayer) grainPlayer.dispose();
             if(filter) filter.dispose();
             if(limiter) limiter.dispose();
 
             currentAudioBuffer = buffer; 
-            
             limiter = new Tone.Limiter(-0.5).toDestination();
             filter = new Tone.Filter(20000, "lowpass").connect(limiter);
-            
             grainPlayer = new Tone.GrainPlayer(buffer).connect(filter);
-            grainPlayer.grainSize = 0.2;
-            grainPlayer.overlap = 0.1;
-            
-            // CORREÇÃO: Sync com Transport para permitir Pause/Resume
+            grainPlayer.grainSize = 0.2; grainPlayer.overlap = 0.1;
             grainPlayer.sync().start(0); 
-
-            // Conectar Visualizer
             connectAnalyser(grainPlayer);
-
-            // Quando o audio acabar, parar o botão
             Tone.Transport.on('stop', () => updateBtn(false));
-            
-            // Como grainPlayer em loop infinito se não parar, agendamos o stop
-            Tone.Transport.scheduleOnce(() => {
-                Tone.Transport.pause();
-                updateBtn(false);
-            }, buffer.duration);
-
+            Tone.Transport.scheduleOnce(() => { Tone.Transport.pause(); updateBtn(false); }, buffer.duration);
             hideLoader();
-            document.getElementById('studioStatus').innerText = "Motor Pronto. Duração: " + buffer.duration.toFixed(1) + "s";
-            
-            currentPitch = 0;
-            currentFine = 0;
-            document.getElementById('fineSlider').value = 0;
-            updateFineTune(0);
+            document.getElementById('studioStatus').innerText = "Pronto. " + buffer.duration.toFixed(1) + "s";
             setTone(0, document.querySelector('.t-btn.orig'));
+            updateFineTune(0);
         }
 
         function setTone(semitones, btn) {
             if(!grainPlayer) return;
             currentPitch = semitones;
-            
             document.querySelectorAll('.t-btn').forEach(b => b.classList.remove('active'));
             if(btn) btn.classList.add('active');
-            
             applyPitch();
         }
 
@@ -896,38 +833,21 @@
 
         function applyPitch() {
             if(!grainPlayer) return;
-
             const totalCents = (currentPitch * 100) + currentFine;
             grainPlayer.detune = totalCents;
-
-            if(totalCents < 0) { 
-                grainPlayer.grainSize = 0.25; 
-                grainPlayer.overlap = 0.12; 
-                filter.frequency.value = 3500; 
-            } else if(totalCents > 0) { 
-                grainPlayer.grainSize = 0.15; 
-                grainPlayer.overlap = 0.08; 
-                filter.frequency.value = 18000; 
-            } else { 
-                grainPlayer.grainSize = 0.2; 
-                grainPlayer.overlap = 0.1;
-                filter.frequency.value = 20000; 
-            }
-            
+            if(totalCents < 0) { grainPlayer.grainSize = 0.25; grainPlayer.overlap = 0.12; filter.frequency.value = 3500; }
+            else if(totalCents > 0) { grainPlayer.grainSize = 0.15; grainPlayer.overlap = 0.08; filter.frequency.value = 18000; }
+            else { grainPlayer.grainSize = 0.2; grainPlayer.overlap = 0.1; filter.frequency.value = 20000; }
             document.getElementById('btnSave').classList.add('ready');
         }
 
         async function togglePlay() {
             if(!grainPlayer) { showToast("Carregue uma música."); return; }
             await Tone.start();
-            
-            // CORREÇÃO: Usar Transport.state em vez de grainPlayer.state
             if(Tone.Transport.state === 'started') {
-                Tone.Transport.pause(); // Pause mantém a posição
-                updateBtn(false);
+                Tone.Transport.pause(); updateBtn(false);
             } else {
-                Tone.Transport.start(); // Start continua de onde parou
-                updateBtn(true);
+                Tone.Transport.start(); updateBtn(true);
                 updateMediaSession(currentTrack.name);
             }
         }
@@ -935,39 +855,57 @@
         function updateBtn(isPlaying) {
             const b = document.getElementById('btnPlay');
             if(isPlaying) {
-                b.innerHTML = '<i class="fas fa-pause"></i> PAUSAR';
-                b.style.background = "#ff1744";
-                b.style.color = "#fff";
+                b.innerHTML = '<i class="fas fa-pause"></i> PAUSAR'; b.style.background = "#ff1744"; b.style.color = "#fff";
             } else {
-                b.innerHTML = '<i class="fas fa-play"></i> OUVIR';
-                b.style.background = "#fff";
-                b.style.color = "#000";
+                b.innerHTML = '<i class="fas fa-play"></i> OUVIR'; b.style.background = "#fff"; b.style.color = "#000";
             }
         }
 
-        // --- LÓGICA DE CASTING (PLAYER NATIVO) ---
+        // --- CONEXÃO / CASTING ---
         function openCastModal() {
-            if (!currentTrack) {
-                showToast("Selecione uma música primeiro.");
-                return;
-            }
-            stopAllAudio(); // Para o audio processado
-
-            // Cria URL para o player nativo
-            const blobUrl = URL.createObjectURL(currentTrack.blob);
-            const nativeP = document.getElementById('castPlayerNative');
-            nativeP.src = blobUrl;
-            
+            if (!currentTrack) { showToast("Selecione uma música."); return; }
             openModal('castModal');
         }
-
         function closeCastModal() {
-            const nativeP = document.getElementById('castPlayerNative');
-            nativeP.pause();
+            document.getElementById('nativePlayerContainer').style.display='none';
+            document.getElementById('castPlayerNative').pause();
             closeModal('castModal');
         }
 
-        // Media Session API (Controles de Bloqueio)
+        // Opção 1: Modo TV (Visualizer + Espelhamento)
+        function activateTvMode() {
+            closeCastModal();
+            toggleTvMode(true);
+            showToast("Modo TV Ativo: Espelhe a tela agora!");
+            if(grainPlayer && Tone.Transport.state !== 'started') togglePlay();
+        }
+
+        function toggleTvMode(active) {
+            isTvMode = active;
+            if(active) {
+                document.body.classList.add('tv-mode');
+                document.getElementById('tvTrackName').innerText = currentTrack ? currentTrack.name : "VocalStudio";
+                // Tentar fullscreen
+                if(document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
+            } else {
+                document.body.classList.remove('tv-mode');
+                if(document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        // Opção 2: Player Nativo (Fallback)
+        function activateNativePlayer() {
+            stopAllAudio(); // Precisa parar o engine para liberar o áudio nativo
+            const blobUrl = URL.createObjectURL(currentTrack.blob);
+            const nativeP = document.getElementById('castPlayerNative');
+            nativeP.src = blobUrl;
+            nativeP.style.display = 'block';
+            document.getElementById('nativePlayerContainer').style.display = 'block';
+            nativeP.play();
+            updateMediaSession(currentTrack.name);
+        }
+
+        // Media Session (Para controle na tela de bloqueio e TV via Bluetooth)
         function updateMediaSession(title) {
             if ('mediaSession' in navigator) {
                 navigator.mediaSession.metadata = new MediaMetadata({
@@ -976,15 +914,17 @@
                     artwork: [{ src: 'https://cdn-icons-png.flaticon.com/512/3039/3039462.png', sizes: '512x512', type: 'image/png' }]
                 });
                 navigator.mediaSession.setActionHandler('play', () => { 
-                    if(grainPlayer) { Tone.Transport.start(); updateBtn(true); }
+                    if(document.getElementById('castPlayerNative').style.display === 'block') document.getElementById('castPlayerNative').play();
+                    else if(grainPlayer) { Tone.Transport.start(); updateBtn(true); }
                 });
                 navigator.mediaSession.setActionHandler('pause', () => { 
-                    Tone.Transport.pause(); updateBtn(false);
+                    if(document.getElementById('castPlayerNative').style.display === 'block') document.getElementById('castPlayerNative').pause();
+                    else { Tone.Transport.pause(); updateBtn(false); }
                 });
             }
         }
 
-        // --- SISTEMA DE EXPORTAÇÃO "CHUNKED" ---
+        // --- SALVAR/EXPORTAR ---
         function openSaveModal() {
             if(!grainPlayer) return;
             const s = currentPitch > 0 ? "+" : "";
@@ -994,84 +934,47 @@
         }
 
         async function confirmSave() {
-            const name = document.getElementById('saveInput').value;
-            closeModal('saveModal');
-            stopAllAudio();
-
+            const name = document.getElementById('saveInput').value; closeModal('saveModal'); stopAllAudio();
             if(currentPitch === 0 && currentFine === 0) {
-                showLoader("Salvando original...");
-                setTimeout(() => finishExport(bufferToWave(currentAudioBuffer), name), 100);
-                return;
+                showLoader("Salvando..."); setTimeout(() => finishExport(bufferToWave(currentAudioBuffer), name), 100); return;
             }
-
             const totalDuration = currentAudioBuffer.duration;
             const chunks = Math.ceil(totalDuration / CHUNK_DURATION);
             const renderedBuffers = [];
             const totalCents = (currentPitch * 100) + currentFine;
-            
-            const p = {
-                grainSize: grainPlayer.grainSize,
-                overlap: grainPlayer.overlap,
-                detune: totalCents,
-                freq: filter.frequency.value
-            };
+            const p = { grainSize: grainPlayer.grainSize, overlap: grainPlayer.overlap, detune: totalCents, freq: filter.frequency.value };
 
             for (let i = 0; i < chunks; i++) {
-                showLoader(`Processando parte ${i+1}/${chunks}...`);
+                showLoader(`Processando ${i+1}/${chunks}...`);
                 const startTime = i * CHUNK_DURATION;
                 const duration = Math.min(CHUNK_DURATION, totalDuration - startTime);
-                
-                try {
-                    const chunkBuffer = await Tone.Offline(async () => {
-                        const gp = new Tone.GrainPlayer(currentAudioBuffer);
-                        gp.grainSize = p.grainSize;
-                        gp.overlap = p.overlap;
-                        gp.detune = p.detune;
-                        gp.playbackRate = 1;
-                        const f = new Tone.Filter(p.freq, "lowpass");
-                        gp.connect(f);
-                        f.toDestination();
-                        gp.start(0, startTime, duration); 
-                    }, duration);
-                    renderedBuffers.push(chunkBuffer);
-                    await new Promise(r => setTimeout(r, 10)); 
-                } catch(e) {
-                    console.error(e);
-                    hideLoader();
-                    showToast("Erro na renderização.");
-                    return;
-                }
+                const chunkBuffer = await Tone.Offline(async () => {
+                    const gp = new Tone.GrainPlayer(currentAudioBuffer);
+                    gp.grainSize = p.grainSize; gp.overlap = p.overlap; gp.detune = p.detune;
+                    const f = new Tone.Filter(p.freq, "lowpass"); gp.connect(f); f.toDestination();
+                    gp.start(0, startTime, duration); 
+                }, duration);
+                renderedBuffers.push(chunkBuffer); await new Promise(r => setTimeout(r, 10)); 
             }
-
             showLoader("Finalizando...");
-            const finalBuffer = concatenateBuffers(renderedBuffers, Tone.context);
-            const wavBlob = bufferToWave(finalBuffer);
-            finishExport(wavBlob, name);
+            finishExport(bufferToWave(concatenateBuffers(renderedBuffers, Tone.context)), name);
         }
 
         async function finishExport(wavBlob, name) {
-            await saveToDB(wavBlob, name);
-            loadTracks();
+            await saveToDB(wavBlob, name); loadTracks();
             if(navigator.canShare && navigator.share) {
                 const f = new File([wavBlob], name+".wav", {type: "audio/wav"});
                 navigator.share({files:[f], title:name}).catch(()=>{});
-            } else {
-                forceDownload(wavBlob, name);
-            }
-            hideLoader();
-            nav('library');
-            showToast("Sucesso!");
+            } else forceDownload(wavBlob, name);
+            hideLoader(); nav('library'); showToast("Sucesso!");
         }
 
         function concatenateBuffers(buffers, context) {
-            let totalLen = 0;
-            for(let b of buffers) totalLen += b.length;
+            let totalLen = 0; for(let b of buffers) totalLen += b.length;
             const output = context.createBuffer(buffers[0].numberOfChannels, totalLen, buffers[0].sampleRate);
             let offset = 0;
             for(let b of buffers) {
-                for(let channel = 0; channel < b.numberOfChannels; channel++) {
-                    output.getChannelData(channel).set(b.getChannelData(channel), offset);
-                }
+                for(let channel = 0; channel < b.numberOfChannels; channel++) output.getChannelData(channel).set(b.getChannelData(channel), offset);
                 offset += b.length;
             }
             return output;
@@ -1079,10 +982,8 @@
 
         // --- UTILS ---
         function promptRename(id) {
-            editingId = id;
-            const item = library.find(t => t.id === id);
-            document.getElementById('renameInput').value = item.name;
-            openModal('renameModal');
+            editingId = id; const item = library.find(t => t.id === id);
+            document.getElementById('renameInput').value = item.name; openModal('renameModal');
         }
         document.getElementById('btnConfirmRename').onclick = () => {
             const n = document.getElementById('renameInput').value;
@@ -1097,66 +998,34 @@
                 };
             }
         };
-        function deleteTrack(id) {
-            if(confirm("Excluir?")) {
-                stopAllAudio();
-                const tx = db.transaction(['tracks'], 'readwrite');
-                tx.objectStore('tracks').delete(id).onsuccess = () => loadTracks();
-            }
-        }
+        function deleteTrack(id) { if(confirm("Excluir?")) { stopAllAudio(); const tx = db.transaction(['tracks'], 'readwrite'); tx.objectStore('tracks').delete(id).onsuccess = () => loadTracks(); } }
         function shareItem(id) {
-            const item = library.find(t => t.id === id);
-            if(!item) return;
+            const item = library.find(t => t.id === id); if(!item) return;
             const f = new File([item.blob], item.name + ".wav", {type: "audio/wav"});
-            if(navigator.canShare && navigator.share) {
-                navigator.share({ files: [f], title: item.name }).catch(()=>{});
-            } else {
-                forceDownload(item.blob, item.name);
-            }
+            if(navigator.canShare && navigator.share) navigator.share({ files: [f], title: item.name }).catch(()=>{});
+            else forceDownload(item.blob, item.name);
         }
-        function forceDownload(blob, name) {
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url; a.download = name + ".wav"; a.click();
-            URL.revokeObjectURL(url);
-        }
+        function forceDownload(blob, name) { const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = name + ".wav"; a.click(); URL.revokeObjectURL(url); }
         function openModal(id) { document.getElementById(id).style.display='flex'; }
         function closeModal(id) { document.getElementById(id).style.display='none'; }
-        function showLoader(txt) { 
-            document.getElementById('loaderText').innerText = txt;
-            document.getElementById('loader').style.display='flex'; 
-        }
+        function showLoader(txt) { document.getElementById('loaderText').innerText = txt; document.getElementById('loader').style.display='flex'; }
         function hideLoader() { document.getElementById('loader').style.display='none'; }
-        function showToast(m) { 
-            const t=document.getElementById('toast'); 
-            t.innerText=m; t.className="show"; 
-            setTimeout(()=>t.className="", 3000); 
-        }
+        function showToast(m) { const t=document.getElementById('toast'); t.innerText=m; t.className="show"; setTimeout(()=>t.className="", 3000); }
 
-        // --- ENCODER WAV ---
         function bufferToWave(abuffer) {
-            const numOfChan = abuffer.numberOfChannels;
-            const length = abuffer.length * numOfChan * 2 + 44;
-            const buffer = new ArrayBuffer(length);
-            const view = new DataView(buffer);
-            const channels = [];
-            let i, sample, offset = 0, pos = 0;
-
+            const numOfChan = abuffer.numberOfChannels; const length = abuffer.length * numOfChan * 2 + 44;
+            const buffer = new ArrayBuffer(length); const view = new DataView(buffer);
+            const channels = []; let i, sample, offset = 0, pos = 0;
             setUint32(0x46464952); setUint32(length - 8); setUint32(0x45564157); setUint32(0x20746d66);
-            setUint32(16); setUint16(1); setUint16(numOfChan);
-            setUint32(abuffer.sampleRate); setUint32(abuffer.sampleRate * 2 * numOfChan);
+            setUint32(16); setUint16(1); setUint16(numOfChan); setUint32(abuffer.sampleRate); setUint32(abuffer.sampleRate * 2 * numOfChan);
             setUint16(numOfChan * 2); setUint16(16); setUint32(0x61746164); setUint32(length - pos - 4);
-
             for(i = 0; i < abuffer.numberOfChannels; i++) channels.push(abuffer.getChannelData(i));
-
             while(offset < abuffer.length) {
                 for(i = 0; i < numOfChan; i++) {
                     sample = Math.max(-1, Math.min(1, channels[i][offset]));
                     sample = (sample < 0 ? sample * 0x8000 : sample * 0x7FFF) | 0;
-                    view.setInt16(pos, sample, true); 
-                    pos += 2;
-                }
-                offset++;
+                    view.setInt16(pos, sample, true); pos += 2;
+                } offset++;
             }
             return new Blob([buffer], {type: "audio/wav"});
             function setUint16(data) { view.setUint16(pos, data, true); pos += 2; }
