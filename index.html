@@ -690,25 +690,39 @@
             }
             // 2. Recebimento de Áudio
             if(data.type === 'audio') {
-                document.getElementById('tvStatus').innerText = "Carregando Áudio...";
-                const blob = new Blob([data.blob]);
+                document.getElementById('tvStatus').innerText = "Processando Áudio...";
+                
+                // Força tipo WAV para garantir decodificação
+                const blob = new Blob([data.blob], { type: 'audio/wav' }); 
                 const url = URL.createObjectURL(blob);
                 
-                // Garante que o Tone está iniciado (já foi chamado no enterTvMode, mas reforça)
-                await Tone.start(); 
-                if(tvPlayer) {
-                    tvPlayer.stop();
-                    tvPlayer.dispose();
+                try {
+                    // Força Contexto a Acordar
+                    await Tone.start(); 
+                    if(Tone.context.state !== 'running') await Tone.context.resume();
+                    
+                    if(tvPlayer) {
+                        tvPlayer.stop();
+                        tvPlayer.dispose();
+                    }
+                    
+                    tvPlayer = new Tone.Player(url).toDestination();
+                    
+                    // Espera carregar
+                    await tvPlayer.loaded;
+                    
+                    tvPlayer.sync().start(0);
+                    Tone.Transport.stop();
+                    Tone.Transport.cancel();
+                    
+                    // Atualiza UI
+                    const dur = tvPlayer.buffer.duration;
+                    document.getElementById('tvStatus').innerText = "Pronto";
+                    document.getElementById('tvDuration').innerText = formatTime(dur);
+                    
+                } catch(e) {
+                    document.getElementById('tvStatus').innerText = "Erro Decode: " + e;
                 }
-                
-                tvPlayer = new Tone.Player(url).toDestination();
-                await tvPlayer.loaded;
-                tvPlayer.sync().start(0);
-                Tone.Transport.stop();
-                Tone.Transport.cancel();
-                
-                document.getElementById('tvStatus').innerText = "Pronto";
-                document.getElementById('tvDuration').innerText = formatTime(tvPlayer.buffer.duration);
             }
             // 3. Comandos de Controle
             if(data.type === 'control') {
