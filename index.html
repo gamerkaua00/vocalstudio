@@ -12,8 +12,9 @@
     <!-- Placeholder para Manifest Dinâmico -->
     <link rel="manifest" id="dynamic-manifest">
 
-    <!-- Motor de Áudio -->
+    <!-- Motor de Áudio & Conexão P2P -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
     <style>
@@ -57,7 +58,7 @@
 
         /* Botão PWA */
         #btnInstall {
-            display: none; /* Só aparece se disponível */
+            display: none;
             background: var(--primary);
             color: #000;
             border: none;
@@ -146,7 +147,7 @@
         .btn-rename { color: #ffab00; }
         .btn-del { color: var(--danger); }
 
-        /* --- ESTÚDIO (UPDATE) --- */
+        /* --- ESTÚDIO --- */
         .track-display {
             background: var(--card); padding: 20px; border-radius: 16px; border: 1px solid #333;
             text-align: center; margin-bottom: 25px;
@@ -155,7 +156,7 @@
         .track-title-large { font-size: 1.1rem; font-weight: bold; color: var(--primary); display: block; margin-bottom: 5px; }
         .track-status { font-size: 0.75rem; color: #666; }
 
-        /* NOVA GRADE DE TONS EXPANDIDA */
+        /* GRADE DE TONS */
         .tone-grid { 
             display: grid; 
             grid-template-columns: repeat(3, 1fr); 
@@ -239,7 +240,7 @@
         @keyframes fadein { from {bottom: 50px; opacity: 0;} to {bottom: 100px; opacity: 1;} }
         @keyframes fadeout { from {bottom: 100px; opacity: 1;} to {bottom: 50px; opacity: 0;} }
 
-        /* --- INTERFACE DE TV (NOVO) --- */
+        /* --- INTERFACE DE TV (WEB CONNECT) --- */
         #tv-interface {
             position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
             background: linear-gradient(135deg, #050505, #111);
@@ -266,6 +267,10 @@
         .tv-time-display { display: flex; justify-content: space-between; font-size: 1.2rem; color: #ccc; font-family: monospace; }
 
         .tv-watermark { position: absolute; bottom: 30px; right: 30px; opacity: 0.3; font-weight: bold; }
+        
+        /* Conexão Code Box */
+        .connect-box { background: #222; padding: 20px; border-radius: 12px; border: 1px solid #444; margin-top: 20px; text-align: center; }
+        .connect-code { font-size: 2rem; font-weight: 900; color: var(--primary); letter-spacing: 5px; margin: 10px 0; user-select: text; }
     </style>
 </head>
 <body>
@@ -273,19 +278,33 @@
     <!-- INTERFACE TV (ESCONDIDA POR PADRÃO) -->
     <div id="tv-interface">
         <div class="tv-content">
-            <div class="tv-album-art"><i class="fas fa-music"></i></div>
-            <div class="tv-title" id="tvTitle">Aguardando Conexão...</div>
-            <div class="tv-status" id="tvStatus">Modo TV Ativo</div>
-            
-            <div class="tv-progress-container">
-                <div class="tv-progress-bar" id="tvProgressBar"></div>
+            <!-- TELA DE CONEXÃO INICIAL -->
+            <div id="tvConnectScreen">
+                <div style="font-size:2rem; margin-bottom:20px; color:#fff"><i class="fas fa-tv"></i> MODO TV WEB</div>
+                <p style="color:#aaa; max-width:500px; margin:0 auto 30px auto;">
+                    No seu telemóvel, toque no ícone da TV, escolha <b>"Gerar Código"</b> e digite o código abaixo.
+                </p>
+                <input type="text" id="tvCodeInput" placeholder="Inserir Código" style="font-size:1.5rem; padding:15px; text-align:center; border-radius:10px; border:none; width:200px; text-transform:uppercase;">
+                <button onclick="connectToSender()" style="font-size:1.5rem; padding:15px 30px; background:var(--primary); border:none; border-radius:10px; cursor:pointer; font-weight:bold; margin-left:10px;">CONECTAR</button>
+                <div id="tvConnStatus" style="margin-top:20px; color:#888;">Aguardando...</div>
             </div>
-            <div class="tv-time-display">
-                <span id="tvCurrentTime">00:00</span>
-                <span id="tvDuration">00:00</span>
+
+            <!-- TELA DE PLAYER (APÓS CONEXÃO) -->
+            <div id="tvPlayerScreen" style="display:none;">
+                <div class="tv-album-art"><i class="fas fa-music"></i></div>
+                <div class="tv-title" id="tvTitle">Aguardando Áudio...</div>
+                <div class="tv-status" id="tvStatus">Conectado</div>
+                
+                <div class="tv-progress-container">
+                    <div class="tv-progress-bar" id="tvProgressBar"></div>
+                </div>
+                <div class="tv-time-display">
+                    <span id="tvCurrentTime">00:00</span>
+                    <span id="tvDuration">00:00</span>
+                </div>
             </div>
         </div>
-        <div class="tv-watermark"><i class="fas fa-wifi"></i> VOCAL STUDIO CAST</div>
+        <div class="tv-watermark"><i class="fas fa-wifi"></i> VOCAL STUDIO WEB LINK</div>
     </div>
 
     <!-- MODAL RENOMEAR -->
@@ -312,20 +331,31 @@
         </div>
     </div>
 
-    <!-- MODAL HELP TV -->
+    <!-- MODAL HELP TV (SENDER) -->
     <div id="tvHelpModal" class="overlay">
         <div class="modal-box">
             <h3 style="margin:0; color:var(--primary); margin-bottom:10px;"><i class="fas fa-tv"></i> Conectar à TV</h3>
-            <p style="color:#ccc; font-size:0.9rem; line-height:1.4; text-align: left;">
-                <b>Opção 1: Cast (Recomendado)</b><br>
-                Envia interface e áudio via Wi-Fi. Requer Chromecast ou Android TV.
-                <br><br>
-                <b>Opção 2: Espelhamento</b><br>
-                Use a função "Espelhar Tela" do seu celular. O áudio sai na TV via espelhamento.
-            </p>
+            
+            <!-- ABAS DO MODAL -->
+            <div style="display:flex; gap:10px; margin-bottom:15px;">
+                 <button class="m-btn" style="background:#333; color:white; font-size:0.8rem;" onclick="showTab('tabCode')">Web Code (Samsung/LG)</button>
+            </div>
+
+            <!-- TAB CODIGO -->
+            <div id="tabCode">
+                <p style="color:#ccc; font-size:0.9rem; margin-bottom:10px;">
+                    1. Abra este site no navegador da TV.<br>
+                    2. Clique em <b>"SOU A TV"</b> na TV.<br>
+                    3. Digite este código lá:
+                </p>
+                <div class="connect-box">
+                    <div id="myPeerId" class="connect-code">...</div>
+                    <div style="font-size:0.7rem; color:#888;">Este é o seu código</div>
+                </div>
+            </div>
+
             <div class="modal-btns" style="margin-top:20px;">
-                <button class="m-btn m-cancel" onclick="closeModal('tvHelpModal')">Cancelar</button>
-                <button class="m-btn m-confirm" onclick="startCast()">Iniciar Cast</button>
+                <button class="m-btn m-cancel" onclick="closeModal('tvHelpModal')">Fechar</button>
             </div>
         </div>
     </div>
@@ -335,7 +365,10 @@
             <div class="logo">VOCAL<span>STUDIO</span> <span style="font-size:0.6rem; color:#666; border:1px solid #333; padding:2px 4px; border-radius:4px;">PRO PWA</span></div>
             <div id="dbStatus" style="font-size:0.7rem; color:#444; margin-left: 10px;">Init...</div>
         </div>
-        <button id="btnInstall" onclick="installApp()"><i class="fas fa-download"></i> INSTALAR APP</button>
+        <div style="display:flex; gap:10px;">
+            <button id="btnTvMode" onclick="enterTvMode()" style="background:#333; color:white; border:1px solid #555; padding:5px 10px; border-radius:4px; font-weight:bold; cursor:pointer; font-size:0.7rem;">SOU A TV</button>
+            <button id="btnInstall" onclick="installApp()"><i class="fas fa-download"></i> APP</button>
+        </div>
     </header>
 
     <div class="tabs">
@@ -405,7 +438,7 @@
 
     <!-- PLAYER BAR -->
     <div class="player-bar">
-        <button class="p-btn btn-main-tv" id="btnTV" onclick="openModal('tvHelpModal')"><i class="fas fa-tv"></i></button>
+        <button class="p-btn btn-main-tv" id="btnTV" onclick="openSenderModal()"><i class="fas fa-tv"></i></button>
         <button class="p-btn btn-main-play" id="btnPlay" onclick="togglePlay()"><i class="fas fa-play"></i> OUVIR</button>
         <button class="p-btn btn-main-save" id="btnSave" onclick="openModal('saveModal')"><i class="fas fa-share-alt"></i> ENVIAR</button>
     </div>
@@ -414,271 +447,189 @@
     <div id="toast">Aviso</div>
 
     <script>
-        // --- 0. PWA BOOTSTRAP (HACKER MODE) ---
-        // Cria o manifest dinamicamente para permitir instalação
+        // --- 0. PWA BOOTSTRAP ---
         function initPWA() {
             const manifest = {
-                "name": "VocalStudio",
-                "short_name": "VocalStudio",
-                "start_url": ".",
-                "display": "standalone",
-                "background_color": "#000000",
-                "theme_color": "#000000",
-                "orientation": "portrait",
-                "icons": [
-                    {
-                        "src": "https://cdn-icons-png.flaticon.com/512/3039/3039462.png",
-                        "sizes": "512x512",
-                        "type": "image/png"
-                    }
-                ]
+                "name": "VocalStudio", "short_name": "VocalStudio", "start_url": ".", "display": "standalone", "background_color": "#000000", "theme_color": "#000000", "orientation": "portrait",
+                "icons": [{"src": "https://cdn-icons-png.flaticon.com/512/3039/3039462.png", "sizes": "512x512", "type": "image/png"}]
             };
-            const stringManifest = JSON.stringify(manifest);
-            const blob = new Blob([stringManifest], {type: 'application/json'});
-            const manifestURL = URL.createObjectURL(blob);
-            document.querySelector('#dynamic-manifest').setAttribute('href', manifestURL);
+            document.querySelector('#dynamic-manifest').setAttribute('href', URL.createObjectURL(new Blob([JSON.stringify(manifest)], {type: 'application/json'})));
         }
         initPWA();
 
-        // Lógica de Instalação (Chrome/Android)
         let deferredPrompt;
-        window.addEventListener('beforeinstallprompt', (e) => {
-            e.preventDefault();
-            deferredPrompt = e;
-            document.getElementById('btnInstall').style.display = 'block';
-        });
-
-        async function installApp() {
-            if (deferredPrompt) {
-                deferredPrompt.prompt();
-                const { outcome } = await deferredPrompt.userChoice;
-                if (outcome === 'accepted') {
-                    deferredPrompt = null;
-                    document.getElementById('btnInstall').style.display = 'none';
-                }
-            }
-        }
+        window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferredPrompt = e; document.getElementById('btnInstall').style.display = 'block'; });
+        async function installApp() { if(deferredPrompt){ deferredPrompt.prompt(); if((await deferredPrompt.userChoice).outcome === 'accepted'){ deferredPrompt = null; document.getElementById('btnInstall').style.display = 'none'; } } }
 
         // --- 1. BANCO DE DADOS ATUALIZADO (V2) ---
-        let db;
-        let dbReady = false;
-        const DB_NAME = "VocalStudioV1_Fixed";
-        const DB_VERSION = 2; // Incrementado para adicionar store de settings
+        let db; let dbReady = false;
+        const DB_NAME = "VocalStudioV1_Fixed"; const DB_VERSION = 2;
 
         function initDB() {
             return new Promise((resolve) => {
                 const req = indexedDB.open(DB_NAME, DB_VERSION);
-                
-                req.onupgradeneeded = e => {
-                    db = e.target.result;
-                    // Store de Tracks (Músicas)
-                    if(!db.objectStoreNames.contains('tracks')) {
-                        db.createObjectStore('tracks', {keyPath:'id', autoIncrement:true});
-                    }
-                    // Store de Configurações (Handle da Pasta)
-                    if(!db.objectStoreNames.contains('settings')) {
-                        db.createObjectStore('settings');
-                    }
+                req.onupgradeneeded = e => { db = e.target.result; 
+                    if(!db.objectStoreNames.contains('tracks')) db.createObjectStore('tracks', {keyPath:'id', autoIncrement:true});
+                    if(!db.objectStoreNames.contains('settings')) db.createObjectStore('settings');
                 };
-                req.onsuccess = e => { 
-                    db = e.target.result; 
-                    dbReady = true; 
-                    document.getElementById('dbStatus').innerText = "DB OK";
-                    document.getElementById('dbStatus').style.color = "var(--primary)";
-                    loadTracks(); 
-                    checkAutoScanFolder(); // Verifica se tem pasta salva ao iniciar
-                    resolve();
-                };
-                req.onerror = () => { 
-                    document.getElementById('dbStatus').innerText = "DB Error"; 
-                    resolve(); 
-                };
+                req.onsuccess = e => { db = e.target.result; dbReady = true; document.getElementById('dbStatus').innerText = "DB OK"; document.getElementById('dbStatus').style.color = "var(--primary)"; loadTracks(); checkAutoScanFolder(); resolve(); };
+                req.onerror = () => { document.getElementById('dbStatus').innerText = "DB Error"; resolve(); };
             });
         }
 
         // --- 2. ESTADO GLOBAL ---
-        let library = [];
-        let currentTrack = null; 
-        let editingId = null;
-        let grainPlayer = null;
-        let playerInstance = null;
-        let filter = null;
-        let limiter = null;
-        let currentPitch = 0; // Semitones (Inteiros)
-        let currentFine = 0;  // Cents (Ajuste fino)
-        let currentAudioBuffer = null;
+        let library = []; let currentTrack = null; let editingId = null;
+        let grainPlayer = null; let playerInstance = null; let filter = null; let limiter = null;
+        let currentPitch = 0; let currentFine = 0; let currentAudioBuffer = null;
+        const CHUNK_DURATION = 15;
 
-        // Configuração de Chunking
-        const CHUNK_DURATION = 15; // Segundos por fatia (seguro para mobile)
-
-        // --- CASTING / TV SYNC (NOVO MOTOR) ---
-        let castConnection = null;
-        let isReceiver = false;
-        const broadcast = new BroadcastChannel('vocal_tv_channel');
-
+        // --- 3. SISTEMA DE CONEXÃO WEB (PEERJS) ---
+        let peer = null;
+        let conn = null;
+        let myId = null;
 
         window.onload = async () => {
-            // Detecção se é Receptor (TV) via URL
-            const urlParams = new URLSearchParams(window.location.search);
-            if (urlParams.has('mode') && urlParams.get('mode') === 'tv') {
-                initReceiver();
-            } else if (navigator.presentation && navigator.presentation.receiver) {
-                // Detecção se é Receptor via Presentation API Nativa
-                initReceiver();
-            } else {
-                await initDB();
-            }
+            await initDB();
+            initPeer();
         };
 
-        // --- 3. LÓGICA DO TRANSMISSOR (CONTROLLER/CELULAR) ---
-        async function startCast() {
-            closeModal('tvHelpModal');
-            
-            // Tenta usar Presentation API (Chrome/Android)
-            if (navigator.presentation) {
-                try {
-                    // Cria request para a MESMA página com ?mode=tv
-                    const req = new PresentationRequest([window.location.href.split('?')[0] + '?mode=tv']);
-                    const connection = await req.start();
-                    handleConnection(connection);
-                    showToast("Conectando à TV...");
-                } catch (e) {
-                    console.log(e);
-                    // Fallback para Popup (funciona se usar Espelhamento)
-                    fallbackPopupCast();
-                }
-            } else {
-                fallbackPopupCast();
-            }
+        function generateShortId() {
+            // Gera ID aleatório de 4 letras para facilitar digitação na TV
+            const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+            let res = ""; for(let i=0; i<4; i++) res += chars.charAt(Math.floor(Math.random() * chars.length));
+            return res;
         }
 
-        function fallbackPopupCast() {
-            // Abre janela popup. Se usuário estiver espelhando tela, aparece na TV.
-            const url = window.location.href.split('?')[0] + '?mode=tv';
-            window.open(url, 'VocalTV', 'width=1280,height=720');
-            showToast("Janela de TV aberta (ative Espelhamento)");
-            // BroadcastChannel cuida do sync local
-        }
-
-        function handleConnection(connection) {
-            castConnection = connection;
-            document.getElementById('btnTV').classList.add('active-cast');
+        function initPeer() {
+            // Cria ID único. No "Sender" (Celular) é usado para a TV conectar.
+            // Usamos um ID fixo ou aleatório. 
+            // Para simplificar, o celular gera um ID curto e mostra.
+            if(!myId) myId = generateShortId();
             
-            connection.onconnect = () => {
+            peer = new Peer(myId);
+
+            peer.on('open', (id) => {
+                console.log('My peer ID is: ' + id);
+                document.getElementById('myPeerId').innerText = id;
+            });
+
+            peer.on('connection', (c) => {
+                // SENDER: Recebeu conexão da TV
+                conn = c;
+                setupConnectionHandlers();
                 showToast("TV Conectada!");
-                // Se já tem música carregada, envia para a TV
-                if (currentTrack && currentTrack.blob) {
+                document.getElementById('btnTV').classList.add('active-cast');
+                closeModal('tvHelpModal');
+                
+                // Envia faixa atual se houver
+                if(currentTrack && currentAudioBuffer) {
                     sendTrackToTV(currentTrack);
                 }
-            };
-            connection.onclose = () => document.getElementById('btnTV').classList.remove('active-cast');
-            connection.onterminate = () => document.getElementById('btnTV').classList.remove('active-cast');
-        }
+            });
 
-        async function sendTrackToTV(track) {
-            if(!castConnection && !broadcast) return;
-            
-            showToast("Enviando áudio para TV...");
-            const arrayBuffer = await track.blob.arrayBuffer();
-            
-            if(castConnection && castConnection.state === 'connected') {
-                castConnection.send(new Blob([JSON.stringify({meta:true, name: track.name})])); // Header
-                castConnection.send(track.blob); // Binary Body
-            } else {
-                // Fallback para BroadcastChannel não recomendado para arquivos grandes
-            }
-        }
-
-        function syncTVControls(action, value) {
-            const data = JSON.stringify({ type: 'control', action: action, value: value });
-            if(castConnection && castConnection.state === 'connected') {
-                castConnection.send(data);
-            }
-            broadcast.postMessage(JSON.parse(data));
-        }
-
-        // --- 4. LÓGICA DO RECEPTOR (TV) ---
-        let tvPlayer = null;
-        
-        function initReceiver() {
-            isReceiver = true;
-            document.getElementById('tv-interface').classList.add('visible');
-            
-            // Listener Presentation API
-            if (navigator.presentation && navigator.presentation.receiver) {
-                navigator.presentation.receiver.connectionList.then(list => {
-                    list.connections.forEach(setupReceiverConnection);
-                    list.onconnectionavailable = e => setupReceiverConnection(e.connection);
-                });
-            }
-            
-            // Listener BroadcastChannel (Fallback/Popup)
-            broadcast.onmessage = (e) => handleTVCommand(e.data);
-        }
-
-        function setupReceiverConnection(connection) {
-            connection.onmessage = async (e) => {
-                if (e.data instanceof Blob) {
-                    if (e.data.size < 1000) { 
-                        const text = await e.data.text();
-                        try { const json = JSON.parse(text); if(json.meta) document.getElementById('tvTitle').innerText = json.name; } catch(err){}
-                    } else {
-                        loadTVAudio(e.data);
-                    }
-                } else if (typeof e.data === 'string') {
-                    try { handleTVCommand(JSON.parse(e.data)); } catch(err){}
+            peer.on('error', (err) => {
+                console.log(err);
+                if(err.type === 'unavailable-id') {
+                    // Se ID colidir, tenta outro (raro com 4 chars mas possivel)
+                    myId = generateShortId();
+                    peer.destroy();
+                    setTimeout(initPeer, 500);
                 }
-            };
+            });
         }
 
-        async function loadTVAudio(blob) {
-            document.getElementById('tvStatus').innerText = "Decodificando Áudio...";
-            try {
-                if(tvPlayer) { tvPlayer.dispose(); }
-                await Tone.start();
+        // --- MODO TV (RECEIVER) ---
+        function enterTvMode() {
+            document.getElementById('tv-interface').classList.add('visible');
+            // Se já tiver peer, destrói para criar um limpo ou usa o atual para conectar ao sender
+            // Na TV, não precisamos de ID fixo, apenas conectar.
+        }
+
+        function connectToSender() {
+            const code = document.getElementById('tvCodeInput').value.toUpperCase();
+            if(code.length < 3) { alert("Código inválido"); return; }
+
+            document.getElementById('tvConnStatus').innerText = "Conectando ao " + code + "...";
+            
+            // Conecta ao ID do celular
+            conn = peer.connect(code);
+
+            conn.on('open', () => {
+                document.getElementById('tvConnStatus').innerText = "Conectado! Aguardando dados...";
+                document.getElementById('tvConnectScreen').style.display = 'none';
+                document.getElementById('tvPlayerScreen').style.display = 'block';
+            });
+
+            conn.on('data', (data) => {
+                handleTVData(data);
+            });
+
+            conn.on('error', (err) => {
+                document.getElementById('tvConnStatus').innerText = "Erro: " + err;
+            });
+        }
+
+        // SENDER: Funções de envio
+        async function sendTrackToTV(track) {
+            if(!conn) return;
+            showToast("Enviando áudio para TV...");
+            
+            // Envia metadados
+            conn.send({ type: 'meta', name: track.name });
+            
+            // Envia o Blob do Audio (PeerJS lida com binários)
+            // Tone buffer -> Blob é difícil. Melhor enviar o Blob original salvo no DB.
+            if(track.blob) {
+                conn.send({ type: 'audio', blob: track.blob });
+            }
+        }
+
+        function sendControlToTV(type, value) {
+            if(!conn) return;
+            conn.send({ type: 'control', action: type, value: value });
+        }
+
+        // RECEIVER: Manipulação de dados
+        let tvPlayer = null;
+        async function handleTVData(data) {
+            if(data.type === 'meta') {
+                document.getElementById('tvTitle').innerText = data.name;
+            }
+            if(data.type === 'audio') {
+                document.getElementById('tvStatus').innerText = "Carregando Áudio...";
+                const blob = new Blob([data.blob]);
                 const url = URL.createObjectURL(blob);
+                
+                await Tone.start();
+                if(tvPlayer) tvPlayer.dispose();
+                
                 tvPlayer = new Tone.Player(url).toDestination();
                 await tvPlayer.loaded;
                 tvPlayer.sync().start(0);
                 Tone.Transport.stop();
                 Tone.Transport.cancel();
                 
-                document.getElementById('tvStatus').innerText = "Pronto para Tocar";
+                document.getElementById('tvStatus').innerText = "Pronto";
                 document.getElementById('tvDuration').innerText = formatTime(tvPlayer.buffer.duration);
-            } catch(e) {
-                document.getElementById('tvStatus').innerText = "Erro ao carregar";
             }
-        }
-
-        function handleTVCommand(cmd) {
-            if(!cmd) return;
-            // Modo "Espelhamento" (recebe update de tempo apenas, áudio toca no celular)
-            if(cmd.type === 'update-mirror') {
-                document.getElementById('tvTitle').innerText = cmd.title;
-                document.getElementById('tvStatus').innerText = cmd.isPlaying ? "REPRODUZINDO (ESPELHO)" : "PAUSADO";
-                updateTVVisuals(cmd.currentTime, cmd.duration, cmd.isPlaying);
-                return;
-            }
-            
-            // Modo "Cast Real" (Controla player local da TV)
-            if(cmd.type === 'control') {
-                if(!tvPlayer) return;
-                switch(cmd.action) {
-                    case 'play': 
-                        Tone.Transport.start(); 
-                        document.getElementById('tvStatus').innerText = "REPRODUZINDO NA TV";
-                        startTVLoop();
-                        break;
-                    case 'pause': 
-                        Tone.Transport.pause(); 
-                        document.getElementById('tvStatus').innerText = "PAUSADO";
-                        break;
-                    case 'seek': 
-                        Tone.Transport.seconds = cmd.value; 
-                        break;
-                    case 'pitch':
-                         if(tvPlayer) tvPlayer.playbackRate = Tone.intervalToFrequencyRatio(cmd.value);
-                         break;
+            if(data.type === 'control') {
+                if(data.action === 'play') {
+                    Tone.Transport.start();
+                    document.getElementById('tvStatus').innerText = "Reproduzindo";
+                    startTVLoop();
+                }
+                if(data.action === 'pause') {
+                    Tone.Transport.pause();
+                    document.getElementById('tvStatus').innerText = "Pausado";
+                }
+                if(data.action === 'pitch') {
+                    // Aplica pitch aproximado na TV (PlaybackRate)
+                    // Frequencia Ratio = 2^(semitons/12)
+                    if(tvPlayer) {
+                        // Total cents -> Semitones
+                        const semi = data.value / 100;
+                        tvPlayer.playbackRate = Tone.intervalToFrequencyRatio(semi);
+                    }
                 }
             }
         }
@@ -686,28 +637,48 @@
         function startTVLoop() {
             function loop() {
                 if(Tone.Transport.state !== 'started') return;
-                updateTVVisuals(Tone.Transport.seconds, tvPlayer ? tvPlayer.buffer.duration : 0, true);
+                const curr = Tone.Transport.seconds;
+                const total = tvPlayer ? tvPlayer.buffer.duration : 1;
+                
+                document.getElementById('tvCurrentTime').innerText = formatTime(curr);
+                const pct = (curr / total) * 100;
+                document.getElementById('tvProgressBar').style.width = pct + "%";
+                
+                // Animação da capa
+                const art = document.querySelector('.tv-album-art');
+                art.style.transform = "scale(1.05)";
+                art.style.borderColor = "var(--primary)";
+                
                 requestAnimationFrame(loop);
             }
             loop();
         }
 
-        function updateTVVisuals(curr, total, playing) {
-            document.getElementById('tvCurrentTime').innerText = formatTime(curr);
-            const pct = total > 0 ? (curr/total)*100 : 0;
-            document.getElementById('tvProgressBar').style.width = pct + "%";
-            
-            const art = document.querySelector('.tv-album-art');
-            if(playing) {
-                art.style.transform = "scale(1.05)";
-                art.style.borderColor = "var(--primary)";
+        function setupConnectionHandlers() {
+            // Se desconectar
+            conn.on('close', () => {
+                showToast("TV Desconectada");
+                document.getElementById('btnTV').classList.remove('active-cast');
+            });
+        }
+
+        function openSenderModal() {
+            // Se já conectado, apenas avisa
+            if(conn && conn.open) {
+                if(confirm("Desconectar da TV?")) {
+                    conn.close(); conn = null;
+                    document.getElementById('btnTV').classList.remove('active-cast');
+                }
             } else {
-                art.style.transform = "scale(1)";
-                art.style.borderColor = "#333";
+                openModal('tvHelpModal');
             }
         }
 
-        // --- 5. NAVEGAÇÃO E ÁUDIO (ORIGINAL RESTAURADO) ---
+        function showTab(t) {
+            // Simples toggle, só tem uma tab agora
+        }
+
+        // --- 4. ENGINE DE ÁUDIO (VERIFICAÇÃO DE ORIGINALIDADE) ---
         function nav(s) {
             stopAllAudio();
             document.querySelectorAll('.screen').forEach(el => el.classList.remove('active'));
@@ -730,42 +701,24 @@
             }
             Tone.Transport.stop(); 
             updateBtn(false);
-            document.querySelectorAll('.btn-play i').forEach(i=>i.className='fas fa-play');
-            syncTVControls('pause');
+            sendControlToTV('pause');
         }
 
-        // --- 6. IMPORTAÇÃO E FILE SYSTEM (RESTAURADO COMPLETO) ---
-        async function triggerImport() {
-            await Tone.start();
-            document.getElementById('fileInput').click();
-        }
-
+        async function triggerImport() { await Tone.start(); document.getElementById('fileInput').click(); }
         async function handleImport(files) {
             if(!files.length) return;
             showLoader("Importando...");
-            const filesArray = Array.from(files);
-            
-            for (const file of filesArray) {
-                // Filtro mais robusto
+            for (const file of Array.from(files)) {
                 if (file.name.match(/\.(mp3|wav|aac|ogg|m4a)$/i) && file.size > 100) {
-                    try {
-                        const name = file.name.replace(/\.[^/.]+$/, "");
-                        const exists = library.find(t => t.name === name);
-                        if (!exists) {
-                            await saveToDB(file, name);
-                        }
-                    } catch(e) {
-                        console.error("Erro ao salvar:", file.name);
-                    }
+                    const name = file.name.replace(/\.[^/.]+$/, "");
+                    if (!library.find(t => t.name === name)) await saveToDB(file, name);
                 }
             }
-            await loadTracks(); 
-            hideLoader(); 
-            showToast("Importação concluída!");
+            await loadTracks(); hideLoader(); showToast("Importação concluída!");
             document.getElementById('fileInput').value = '';
-            document.getElementById('legacyFolderInput').value = ''; 
         }
 
+        // --- FILE SYSTEM (Completo) ---
         async function selectFolder() {
             if ('showDirectoryPicker' in window) {
                 try {
@@ -774,235 +727,105 @@
                     await scanDirectory(dirHandle);
                     showToast("Pasta vinculada e escaneada!");
                     return; 
-                } catch (err) {
-                    if (err.name === 'SecurityError' || err.code === 18) {
-                        console.warn("FSA API bloqueada pelo navegador, ativando modo legado.");
-                    } else if (err.name === 'AbortError') {
-                        return; 
-                    } else {
-                        console.error("Erro desconhecido na API:", err);
-                    }
-                }
+                } catch (err) {}
             }
             document.getElementById('legacyFolderInput').click();
         }
-
         async function saveFolderHandle(handle) {
-            return new Promise(resolve => {
-                const tx = db.transaction(['settings'], 'readwrite');
-                tx.objectStore('settings').put(handle, 'musicFolderHandle');
-                tx.oncomplete = () => resolve();
-            });
+            return new Promise(r => { const tx = db.transaction(['settings'], 'readwrite'); tx.objectStore('settings').put(handle, 'musicFolderHandle'); tx.oncomplete = () => r(); });
         }
-
         async function getFolderHandle() {
-            return new Promise(resolve => {
-                const tx = db.transaction(['settings'], 'readonly');
-                const req = tx.objectStore('settings').get('musicFolderHandle');
-                req.onsuccess = e => resolve(e.target.result);
-                req.onerror = () => resolve(null);
-            });
+            return new Promise(r => { const tx = db.transaction(['settings'], 'readonly'); const req = tx.objectStore('settings').get('musicFolderHandle'); req.onsuccess = e => r(e.target.result); req.onerror = () => r(null); });
         }
-
-        async function verifyPermission(fileHandle, readWrite) {
-            const options = {};
-            if (readWrite) { options.mode = 'readwrite'; }
-            if ((await fileHandle.queryPermission(options)) === 'granted') {
-                return true;
-            }
-            if ((await fileHandle.requestPermission(options)) === 'granted') {
-                return true;
-            }
+        async function verifyPermission(h, rw) {
+            const o = {}; if (rw) o.mode = 'readwrite';
+            if ((await h.queryPermission(o)) === 'granted') return true;
+            if ((await h.requestPermission(o)) === 'granted') return true;
             return false;
         }
-
         async function checkAutoScanFolder() {
-            const handle = await getFolderHandle();
-            if (handle) {
-                console.log("Pasta vinculada encontrada. Tentando escanear...");
-                try {
-                    const hasPerm = await verifyPermission(handle, false);
-                    if(hasPerm) {
-                        await scanDirectory(handle, true); 
-                    } else {
-                        showToast("Reconecte a pasta para sincronizar.");
-                    }
-                } catch(e) {
-                    console.log("Auto-scan não permitido neste contexto.");
-                }
-            }
+            const h = await getFolderHandle();
+            if (h) { try { if(await verifyPermission(h, false)) await scanDirectory(h, true); } catch(e){} }
         }
-
-        async function scanDirectory(dirHandle, silent = false) {
-            if(!silent) showLoader("Varrendo pasta...");
-            
+        async function scanDirectory(h, silent = false) {
+            if(!silent) showLoader("Varrendo...");
             try {
-                for await (const entry of dirHandle.values()) {
-                    if (entry.kind === 'file') {
-                        if(entry.name.match(/\.(mp3|wav|aac|ogg|m4a)$/i)) {
-                            const file = await entry.getFile();
-                            const name = file.name.replace(/\.[^/.]+$/, "");
-                            const exists = library.find(t => t.name === name);
-                            if(!exists) {
-                                await saveToDB(file, name);
-                            }
-                        }
-                    } else if (entry.kind === 'directory') {
-                        await scanDirectory(entry, true);
-                    }
+                for await (const entry of h.values()) {
+                    if (entry.kind === 'file' && entry.name.match(/\.(mp3|wav|aac|ogg|m4a)$/i)) {
+                        const file = await entry.getFile();
+                        const name = file.name.replace(/\.[^/.]+$/, "");
+                        if(!library.find(t => t.name === name)) await saveToDB(file, name);
+                    } else if (entry.kind === 'directory') { await scanDirectory(entry, true); }
                 }
-                if(!silent) {
-                    await loadTracks();
-                    hideLoader();
-                } else {
-                    loadTracks();
-                }
-            } catch (err) {
-                console.error("Erro no scan:", err);
-                if(!silent) hideLoader();
-            }
+                if(!silent) { await loadTracks(); hideLoader(); } else { loadTracks(); }
+            } catch (err) { if(!silent) hideLoader(); }
         }
 
         function saveToDB(blob, name) {
-            return new Promise(resolve => {
-                if(!dbReady) { resolve(); return; }
-                const tx = db.transaction(['tracks'], 'readwrite');
-                tx.objectStore('tracks').add({name:name, blob:blob, date:Date.now()});
-                tx.oncomplete = () => resolve();
-                tx.onerror = () => resolve();
-            });
+            return new Promise(r => { if(!dbReady) {r();return;} const tx = db.transaction(['tracks'], 'readwrite'); tx.objectStore('tracks').add({name:name, blob:blob, date:Date.now()}); tx.oncomplete = () => r(); });
         }
-
         function loadTracks() {
             if(!dbReady) return;
             const tx = db.transaction(['tracks'], 'readonly');
-            tx.objectStore('tracks').getAll().onsuccess = e => {
-                library = e.target.result.reverse();
-                renderLib();
-            };
+            tx.objectStore('tracks').getAll().onsuccess = e => { library = e.target.result.reverse(); renderLib(); };
         }
-
         function renderLib() {
-            const list = document.getElementById('libList');
-            list.innerHTML = "";
-            
-            if(!library.length) {
-                list.innerHTML = `<div style="text-align:center; padding:40px; color:#444"><i class="fas fa-music" style="font-size:2rem; margin-bottom:10px;"></i><br>Biblioteca vazia</div>`;
-                return;
-            }
-
+            const list = document.getElementById('libList'); list.innerHTML = "";
+            if(!library.length) { list.innerHTML = `<div style="text-align:center; padding:40px; color:#444">Biblioteca vazia</div>`; return; }
             library.forEach(item => {
                 const size = (item.blob.size/1024/1024).toFixed(1)+"MB";
-                const div = document.createElement('div');
-                div.className = 'music-item';
+                const div = document.createElement('div'); div.className = 'music-item';
                 if(currentTrack && currentTrack.id === item.id) div.classList.add('active-track');
-                
-                div.innerHTML = `
-                    <div class="music-info">
-                        <div class="music-name">${item.name}</div>
-                        <div class="music-date">${new Date(item.date).toLocaleDateString()} • ${size}</div>
-                    </div>
-                    <div class="music-actions">
-                        <div class="action-group">
-                            <button class="act-btn btn-play" onclick="playPreview(${item.id}, this)"><i class="fas fa-play"></i></button>
-                            <button class="act-btn btn-edit" onclick="loadStudio(${item.id})"><i class="fas fa-sliders-h"></i></button>
-                        </div>
-                        <div class="action-group">
-                            <button class="act-btn btn-rename" onclick="promptRename(${item.id})"><i class="fas fa-pen"></i></button>
-                            <button class="act-btn btn-share" onclick="shareItem(${item.id})"><i class="fab fa-whatsapp"></i></button>
-                            <button class="act-btn btn-del" onclick="deleteTrack(${item.id})"><i class="fas fa-trash"></i></button>
-                        </div>
-                    </div>
-                `;
+                div.innerHTML = `<div class="music-info"><div class="music-name">${item.name}</div><div class="music-date">${new Date(item.date).toLocaleDateString()} • ${size}</div></div>
+                    <div class="music-actions"><div class="action-group"><button class="act-btn btn-play" onclick="playPreview(${item.id}, this)"><i class="fas fa-play"></i></button><button class="act-btn btn-edit" onclick="loadStudio(${item.id})"><i class="fas fa-sliders-h"></i></button></div>
+                    <div class="action-group"><button class="act-btn btn-rename" onclick="promptRename(${item.id})"><i class="fas fa-pen"></i></button><button class="act-btn btn-share" onclick="shareItem(${item.id})"><i class="fab fa-whatsapp"></i></button><button class="act-btn btn-del" onclick="deleteTrack(${item.id})"><i class="fas fa-trash"></i></button></div></div>`;
                 list.appendChild(div);
             });
         }
 
-        async function getAudioBuffer(blob) {
-            try {
-                const arrayBuffer = await blob.arrayBuffer();
-                return await Tone.context.decodeAudioData(arrayBuffer);
-            } catch (e) {
-                throw new Error("Formato não suportado ou arquivo corrompido.");
-            }
-        }
+        async function getAudioBuffer(blob) { return await Tone.context.decodeAudioData(await blob.arrayBuffer()); }
 
         async function playPreview(id, btn) {
             try { await Tone.start(); } catch (e) {}
-            
-            if(playerInstance && playerInstance.trackId === id && playerInstance.state === 'started') {
-                playerInstance.stop();
-                btn.querySelector('i').className = 'fas fa-play';
-                return;
-            }
-
+            if(playerInstance && playerInstance.trackId === id && playerInstance.state === 'started') { playerInstance.stop(); btn.querySelector('i').className = 'fas fa-play'; return; }
             stopAllAudio();
-            const item = library.find(t => t.id === id);
-            if(!item) return;
-
-            showLoader("Carregando...");
-            btn.querySelector('i').className = 'fas fa-spinner fa-spin';
-
+            const item = library.find(t => t.id === id); if(!item) return;
+            showLoader("Carregando..."); btn.querySelector('i').className = 'fas fa-spinner fa-spin';
             try {
                 const audioBuffer = await getAudioBuffer(item.blob);
                 playerInstance = new Tone.Player(audioBuffer).toDestination();
                 playerInstance.trackId = id;
-                
-                playerInstance.onstop = () => {
-                    if(btn && btn.querySelector('i')) btn.querySelector('i').className = 'fas fa-play';
-                    if(playerInstance) { playerInstance.dispose(); playerInstance = null; }
-                    Tone.Transport.stop();
-                };
-                
+                playerInstance.onstop = () => { if(btn.querySelector('i')) btn.querySelector('i').className = 'fas fa-play'; if(playerInstance) { playerInstance.dispose(); playerInstance = null; } Tone.Transport.stop(); };
                 hideLoader();
                 playerInstance.sync().start(0);
                 
-                // Configuração de TV
+                // TV Sync
                 currentTrack = item;
-                if(castConnection && castConnection.state === 'connected') {
-                    sendTrackToTV(item);
-                    playerInstance.mute = true;
-                } else {
-                    playerInstance.mute = false;
-                }
-                
-                togglePlay(); // Inicia
-                btn.querySelector('i').className = 'fas fa-stop';
-            } catch(e) {
-                hideLoader();
-                showToast("Erro ao abrir áudio.");
-                btn.querySelector('i').className = 'fas fa-play';
-            }
+                if(conn) { sendTrackToTV(item); playerInstance.mute = true; } else { playerInstance.mute = false; }
+
+                togglePlay(); btn.querySelector('i').className = 'fas fa-stop';
+            } catch(e) { hideLoader(); showToast("Erro."); btn.querySelector('i').className = 'fas fa-play'; }
         }
 
-        // --- 7. ESTÚDIO E RENDERIZAÇÃO OTIMIZADA ---
         async function loadStudio(id) {
-            await Tone.start();
-            stopAllAudio();
-            const item = library.find(t => t.id === id);
-            if(!item) return;
-
-            nav('studio');
-            document.getElementById('studioName').innerText = item.name;
-            document.getElementById('studioStatus').innerText = "Carregando...";
-            showLoader("Preparando Estúdio...");
-
+            await Tone.start(); stopAllAudio();
+            const item = library.find(t => t.id === id); if(!item) return;
+            nav('studio'); document.getElementById('studioName').innerText = item.name;
+            document.getElementById('studioStatus').innerText = "Carregando..."; showLoader("Preparando Estúdio...");
             try {
                 const buffer = await getAudioBuffer(item.blob);
                 currentTrack = item;
                 setupEngine(buffer);
-            } catch(e) {
-                hideLoader();
-                showToast("Erro: Áudio inválido.");
-            }
+            } catch(e) { hideLoader(); showToast("Erro de Áudio."); }
         }
 
+        // --- ENGINE ORIGINAL VERIFICADA ---
         function setupEngine(buffer) {
             if(grainPlayer) grainPlayer.dispose();
             if(filter) filter.dispose();
             if(limiter) limiter.dispose();
 
-            currentAudioBuffer = buffer; // Guarda ref global
+            currentAudioBuffer = buffer; 
             
             limiter = new Tone.Limiter(-0.5).toDestination();
             filter = new Tone.Filter(20000, "lowpass").connect(limiter);
@@ -1013,36 +836,26 @@
             
             grainPlayer.onstop = () => updateBtn(false);
 
-            // Sync para TV e Transport
-            Tone.Transport.stop();
-            Tone.Transport.seconds = 0;
+            // Sync
+            Tone.Transport.stop(); Tone.Transport.seconds = 0;
             grainPlayer.sync().start(0); 
 
-            if(castConnection && castConnection.state === 'connected') {
-                sendTrackToTV(currentTrack);
-                grainPlayer.mute = true;
-            }
+            if(conn) { sendTrackToTV(currentTrack); grainPlayer.mute = true; }
 
             hideLoader();
-            document.getElementById('studioStatus').innerText = "Motor Pronto. Duração: " + buffer.duration.toFixed(1) + "s";
+            document.getElementById('studioStatus').innerText = "Motor Pronto. " + buffer.duration.toFixed(1) + "s";
             
-            // Reset controles
-            currentPitch = 0;
-            currentFine = 0;
+            currentPitch = 0; currentFine = 0;
             document.getElementById('fineSlider').value = 0;
             updateFineTune(0);
             setTone(0, document.querySelector('.t-btn.orig'));
         }
 
-        // Lógica de Tons Combinada (Inteiro + Fino)
         function setTone(semitones, btn) {
             if(!grainPlayer) return;
             currentPitch = semitones;
-            
-            // UI Update
             document.querySelectorAll('.t-btn').forEach(b => b.classList.remove('active'));
             if(btn) btn.classList.add('active');
-            
             applyPitch();
         }
 
@@ -1052,14 +865,12 @@
             applyPitch();
         }
 
+        // Lógica de Pitch Original
         function applyPitch() {
             if(!grainPlayer) return;
-
-            // Fórmula: (Semitons * 100) + Cents
             const totalCents = (currentPitch * 100) + currentFine;
             grainPlayer.detune = totalCents;
 
-            // Otimização de Grain baseada no Pitch Total
             if(totalCents < 0) { 
                 grainPlayer.grainSize = 0.25; 
                 grainPlayer.overlap = 0.12; 
@@ -1075,7 +886,7 @@
             }
             
             document.getElementById('btnSave').classList.add('ready');
-            syncTVControls('pitch', totalCents);
+            sendControlToTV('pitch', totalCents);
         }
 
         async function togglePlay() {
@@ -1085,55 +896,33 @@
             if(Tone.Transport.state === 'started') {
                 Tone.Transport.pause();
                 updateBtn(false);
-                syncTVControls('pause');
+                sendControlToTV('pause');
             } else {
                 Tone.Transport.start();
                 updateBtn(true);
-                syncTVControls('play');
-                startMirrorSync();
+                sendControlToTV('play');
             }
         }
 
         function updateBtn(isPlaying) {
             const b = document.getElementById('btnPlay');
-            if(isPlaying) {
-                b.innerHTML = '<i class="fas fa-pause"></i> PAUSAR';
-                b.style.background = "#ff1744";
-                b.style.color = "#fff";
-            } else {
-                b.innerHTML = '<i class="fas fa-play"></i> OUVIR';
-                b.style.background = "#fff";
-                b.style.color = "#000";
-            }
+            if(isPlaying) { b.innerHTML = '<i class="fas fa-pause"></i> PAUSAR'; b.style.background = "#ff1744"; b.style.color = "#fff"; } 
+            else { b.innerHTML = '<i class="fas fa-play"></i> OUVIR'; b.style.background = "#fff"; b.style.color = "#000"; }
         }
 
-        // Loop de sincronização para Espelhamento
-        function startMirrorSync() {
-            const loop = () => {
-                if(Tone.Transport.state !== 'started') return;
-                broadcast.postMessage({
-                    type: 'update-mirror',
-                    title: currentTrack ? currentTrack.name : 'Unknown',
-                    isPlaying: true,
-                    currentTime: Tone.Transport.seconds,
-                    duration: currentAudioBuffer ? currentAudioBuffer.duration : 0
-                });
-                requestAnimationFrame(loop);
-            };
-            loop();
-        }
-
-        // --- 8. SISTEMA DE EXPORTAÇÃO "CHUNKED" (ANTI-CRASH RESTAURADO) ---
+        // --- UTILS & EXPORT ---
         function openModal(id) { document.getElementById(id).style.display='flex'; }
         function closeModal(id) { document.getElementById(id).style.display='none'; }
+        function showLoader(txt) { document.getElementById('loaderText').innerText = txt; document.getElementById('loader').style.display='flex'; }
+        function hideLoader() { document.getElementById('loader').style.display='none'; }
+        function showToast(m) { const t=document.getElementById('toast'); t.innerText=m; t.className="show"; setTimeout(()=>t.className="", 3000); }
+        function formatTime(s) { const m=Math.floor(s/60), sec=Math.floor(s%60); return `${m<10?'0'+m:m}:${sec<10?'0'+sec:sec}`; }
 
         async function confirmSave() {
             const name = document.getElementById('saveInput').value;
-            closeModal('saveModal');
-            stopAllAudio();
+            closeModal('saveModal'); stopAllAudio();
 
             if(currentPitch === 0 && currentFine === 0) {
-                // Atalho para original
                 showLoader("Salvando original...");
                 setTimeout(() => finishExport(bufferToWave(currentAudioBuffer), name), 100);
                 return;
@@ -1142,85 +931,43 @@
             const totalDuration = currentAudioBuffer.duration;
             const chunks = Math.ceil(totalDuration / CHUNK_DURATION);
             const renderedBuffers = [];
-
-            // Parâmetros para replicar no Offline Context
             const totalCents = (currentPitch * 100) + currentFine;
             
-            const p = {
-                grainSize: grainPlayer.grainSize,
-                overlap: grainPlayer.overlap,
-                detune: totalCents,
-                freq: filter.frequency.value
-            };
+            const p = { grainSize: grainPlayer.grainSize, overlap: grainPlayer.overlap, detune: totalCents, freq: filter.frequency.value };
 
-            // Loop de Renderização Fatiada
             for (let i = 0; i < chunks; i++) {
-                showLoader(`Processando parte ${i+1}/${chunks}...`);
-                
+                showLoader(`Processando ${i+1}/${chunks}...`);
                 const startTime = i * CHUNK_DURATION;
                 const duration = Math.min(CHUNK_DURATION, totalDuration - startTime);
                 
                 try {
-                    // Renderiza apenas uma fatia pequena
                     const chunkBuffer = await Tone.Offline(async () => {
                         const gp = new Tone.GrainPlayer(currentAudioBuffer);
-                        gp.grainSize = p.grainSize;
-                        gp.overlap = p.overlap;
-                        gp.detune = p.detune;
-                        gp.playbackRate = 1;
-                        
+                        gp.grainSize = p.grainSize; gp.overlap = p.overlap; gp.detune = p.detune; gp.playbackRate = 1;
                         const f = new Tone.Filter(p.freq, "lowpass");
-                        gp.connect(f);
-                        f.toDestination();
-                        
-                        // O segredo: tocar apenas a parte específica do buffer original
+                        gp.connect(f); f.toDestination();
                         gp.start(0, startTime, duration); 
                     }, duration);
-                    
                     renderedBuffers.push(chunkBuffer);
-                    
-                    // Pequena pausa para a UI atualizar e evitar "Page Unresponsive"
                     await new Promise(r => setTimeout(r, 10)); 
-
-                } catch(e) {
-                    console.error(e);
-                    hideLoader();
-                    showToast("Erro na renderização.");
-                    return;
-                }
+                } catch(e) { hideLoader(); showToast("Erro."); return; }
             }
-
             showLoader("Finalizando...");
-            // Combina todos os pedaços
             const finalBuffer = concatenateBuffers(renderedBuffers, Tone.context);
             const wavBlob = bufferToWave(finalBuffer);
-            
             finishExport(wavBlob, name);
         }
 
         async function finishExport(wavBlob, name) {
-            await saveToDB(wavBlob, name);
-            loadTracks();
-            
-            if(navigator.canShare && navigator.share) {
-                const f = new File([wavBlob], name+".wav", {type: "audio/wav"});
-                navigator.share({files:[f], title:name}).catch(()=>{});
-            } else {
-                forceDownload(wavBlob, name);
-            }
-            
-            hideLoader();
-            nav('library');
-            showToast("Sucesso!");
+            await saveToDB(wavBlob, name); loadTracks();
+            if(navigator.canShare && navigator.share) { const f = new File([wavBlob], name+".wav", {type: "audio/wav"}); navigator.share({files:[f], title:name}).catch(()=>{}); } 
+            else { forceDownload(wavBlob, name); }
+            hideLoader(); nav('library'); showToast("Sucesso!");
         }
 
-        // Função para juntar os pedaços de áudio
         function concatenateBuffers(buffers, context) {
-            let totalLen = 0;
-            for(let b of buffers) totalLen += b.length;
-            
+            let totalLen = 0; for(let b of buffers) totalLen += b.length;
             const output = context.createBuffer(buffers[0].numberOfChannels, totalLen, buffers[0].sampleRate);
-            
             let offset = 0;
             for(let b of buffers) {
                 for(let channel = 0; channel < b.numberOfChannels; channel++) {
@@ -1231,62 +978,6 @@
             return output;
         }
 
-        // --- UTILS ---
-        function promptRename(id) {
-            editingId = id;
-            const item = library.find(t => t.id === id);
-            document.getElementById('renameInput').value = item.name;
-            openModal('renameModal');
-        }
-        document.getElementById('btnConfirmRename').onclick = () => {
-            const n = document.getElementById('renameInput').value;
-            if(n && editingId && dbReady) {
-                const tx = db.transaction(['tracks'], 'readwrite');
-                tx.objectStore('tracks').get(editingId).onsuccess = e => {
-                    const d = e.target.result; d.name = n;
-                    tx.objectStore('tracks').put(d).onsuccess = () => { 
-                        loadTracks(); closeModal('renameModal'); 
-                        if(currentTrack && currentTrack.id === editingId) document.getElementById('studioName').innerText = n;
-                    };
-                };
-            }
-        };
-        function deleteTrack(id) {
-            if(confirm("Excluir?")) {
-                stopAllAudio();
-                const tx = db.transaction(['tracks'], 'readwrite');
-                tx.objectStore('tracks').delete(id).onsuccess = () => loadTracks();
-            }
-        }
-        function shareItem(id) {
-            const item = library.find(t => t.id === id);
-            if(!item) return;
-            const f = new File([item.blob], item.name + ".wav", {type: "audio/wav"});
-            if(navigator.canShare && navigator.share) {
-                navigator.share({ files: [f], title: item.name }).catch(()=>{});
-            } else {
-                forceDownload(item.blob, item.name);
-            }
-        }
-        function forceDownload(blob, name) {
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url; a.download = name + ".wav"; a.click();
-            URL.revokeObjectURL(url);
-        }
-        
-        function showLoader(txt) { 
-            document.getElementById('loaderText').innerText = txt;
-            document.getElementById('loader').style.display='flex'; 
-        }
-        function hideLoader() { document.getElementById('loader').style.display='none'; }
-        function showToast(m) { 
-            const t=document.getElementById('toast'); 
-            t.innerText=m; t.className="show"; 
-            setTimeout(()=>t.className="", 3000); 
-        }
-
-        // --- ENCODER WAV ---
         function bufferToWave(abuffer) {
             const numOfChan = abuffer.numberOfChannels;
             const length = abuffer.length * numOfChan * 2 + 44;
@@ -1294,6 +985,8 @@
             const view = new DataView(buffer);
             const channels = [];
             let i, sample, offset = 0, pos = 0;
+            function setUint16(data) { view.setUint16(pos, data, true); pos += 2; }
+            function setUint32(data) { view.setUint32(pos, data, true); pos += 4; }
 
             setUint32(0x46464952); setUint32(length - 8); setUint32(0x45564157); setUint32(0x20746d66);
             setUint32(16); setUint16(1); setUint16(numOfChan);
@@ -1301,20 +994,23 @@
             setUint16(numOfChan * 2); setUint16(16); setUint32(0x61746164); setUint32(length - pos - 4);
 
             for(i = 0; i < abuffer.numberOfChannels; i++) channels.push(abuffer.getChannelData(i));
-
             while(offset < abuffer.length) {
                 for(i = 0; i < numOfChan; i++) {
                     sample = Math.max(-1, Math.min(1, channels[i][offset]));
                     sample = (sample < 0 ? sample * 0x8000 : sample * 0x7FFF) | 0;
-                    view.setInt16(pos, sample, true); 
-                    pos += 2;
+                    view.setInt16(pos, sample, true); pos += 2;
                 }
                 offset++;
             }
             return new Blob([buffer], {type: "audio/wav"});
-            function setUint16(data) { view.setUint16(pos, data, true); pos += 2; }
-            function setUint32(data) { view.setUint32(pos, data, true); pos += 4; }
         }
+        
+        // Utils restantes (Rename, Delete)
+        function promptRename(id) { editingId=id; const item=library.find(t=>t.id===id); document.getElementById('renameInput').value=item.name; openModal('renameModal'); }
+        document.getElementById('btnConfirmRename').onclick=()=>{ const n=document.getElementById('renameInput').value; if(n&&editingId&&dbReady){ const tx=db.transaction(['tracks'],'readwrite'); tx.objectStore('tracks').get(editingId).onsuccess=e=>{ const d=e.target.result; d.name=n; tx.objectStore('tracks').put(d).onsuccess=()=>{ loadTracks(); closeModal('renameModal'); if(currentTrack&&currentTrack.id===editingId) document.getElementById('studioName').innerText=n; }; }; } };
+        function deleteTrack(id) { if(confirm("Excluir?")){ stopAllAudio(); const tx=db.transaction(['tracks'],'readwrite'); tx.objectStore('tracks').delete(id).onsuccess=()=>loadTracks(); } }
+        function shareItem(id) { const item=library.find(t=>t.id===id); if(!item)return; const f=new File([item.blob], item.name+".wav", {type: "audio/wav"}); if(navigator.canShare&&navigator.share){ navigator.share({files:[f],title:item.name}).catch(()=>{}); }else{ forceDownload(item.blob, item.name); } }
+        function forceDownload(blob, name) { const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=name+".wav"; a.click(); URL.revokeObjectURL(url); }
     </script>
 </body>
 </html>
