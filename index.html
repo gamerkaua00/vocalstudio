@@ -7,9 +7,8 @@
     <meta name="description" content="Editor de áudio vocal simples via web - PWA Enabled">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>VocalStudio Pro (TV Mode)</title>
+    <title>VocalStudio Pro (Sync-Core)</title>
     
-    <!-- Placeholder para Manifest Dinâmico -->
     <link rel="manifest" id="dynamic-manifest">
 
     <!-- Motor de Áudio -->
@@ -82,6 +81,7 @@
         body.tv-mode #tvInfo { display: block; }
         .tv-track-name { font-size: 2rem; font-weight: 900; color: #fff; text-shadow: 0 0 20px rgba(0,230,118,0.5); }
         .tv-artist { font-size: 1.2rem; color: #aaa; margin-top: 10px; }
+        .tv-time { font-size: 1.5rem; color: var(--primary); margin-top: 15px; font-family: monospace; }
 
 
         /* Botão PWA */
@@ -293,7 +293,7 @@
 <body>
 
     <!-- ELEMENTO DE AUDIO MUDO (Audio Unlocker) -->
-    <!-- Este elemento toca um silêncio para forçar o canal de mídia do Bluetooth a abrir -->
+    <!-- Volume em 0.2 para garantir que o canal de áudio abra, mas não atrapalhe -->
     <audio id="audioUnlocker" loop playsinline style="display:none"></audio>
 
     <!-- CANVAS PARA VISUALIZER -->
@@ -304,7 +304,8 @@
     <div id="tvInfo">
         <div class="tv-track-name" id="tvTrackName">Nome da Música</div>
         <div class="tv-artist">VocalStudio Pro</div>
-        <div style="margin-top:20px; font-size:0.9rem; color:#888;">Para ouvir com efeitos, use o "Espelhar Tela" do celular na TV.</div>
+        <div class="tv-time" id="tvTimeDisplay">00:00</div>
+        <div style="margin-top:20px; font-size:0.9rem; color:#888;">Audio Sync Ativo • Espelhe a tela</div>
     </div>
 
     <!-- MODAL RENOMEAR -->
@@ -439,7 +440,7 @@
         </div>
 
         <div style="text-align:center; font-size:0.7rem; color:#444; margin-top:20px;">
-            Engine V2.5: Bluetooth Audio Fix
+            Engine V3.0: Sync-Core (Bluetooth Optimized)
         </div>
     </div>
 
@@ -475,16 +476,14 @@
         }
         initPWA();
         
-        // --- AUDIO UNLOCKER FOR BLUETOOTH ---
-        // Pequeno arquivo de silêncio para forçar o sistema a abrir canal de mídia
+        // --- AUDIO UNLOCKER FOR BLUETOOTH (V3) ---
         const silentBase64 = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
         const audioUnlocker = document.getElementById('audioUnlocker');
         audioUnlocker.src = silentBase64;
-        audioUnlocker.volume = 0.01; // Volume mínimo só para ativar
+        audioUnlocker.volume = 0.2; // Aumentado ligeiramente para evitar corte de sistema
 
         function unlockAudioSystem() {
-            // Tenta tocar o audio mudo
-            audioUnlocker.play().catch(e => console.log("Unlock blocked (user interaction needed)"));
+            audioUnlocker.play().catch(e => console.log("Unlock pending user interaction"));
         }
 
         // Lógica de Instalação (Chrome/Android)
@@ -506,7 +505,7 @@
             }
         }
 
-        // --- 1. BANCO DE DADOS ATUALIZADO (V2) ---
+        // --- 1. BANCO DE DADOS ---
         let db;
         let dbReady = false;
         const DB_NAME = "VocalStudioV1_Fixed";
@@ -545,18 +544,18 @@
         let currentFine = 0;
         let currentAudioBuffer = null;
         
-        // Visualizer
+        // Visualizer & Sync
         let analyser = null;
         let visualizerContext = null;
         let isTvMode = false;
+        let syncInterval = null; // HEARTBEAT FOR TV
 
         const CHUNK_DURATION = 15;
 
         window.onload = async () => {
             await initDB();
             initVisualizer();
-            
-            // Adiciona listener global para desbloquear audio no primeiro clique
+            // User interaction setup
             document.body.addEventListener('click', () => {
                 if(Tone.context.state !== 'running') Tone.context.resume();
                 unlockAudioSystem();
@@ -574,24 +573,33 @@
         }
 
         function stopAllAudio() {
-            // Pausa o transporte (timeline)
-            Tone.Transport.pause();
-            
-            // Pausa o unlocker também
+            // Full Reset para evitar fantasmas
+            Tone.Transport.stop();
             audioUnlocker.pause();
             
-            // Para Players simples
             if(playerInstance) {
-                if(playerInstance.state === 'started') playerInstance.stop();
-                playerInstance.dispose(); playerInstance = null;
+                playerInstance.stop();
+                playerInstance.dispose();
+                playerInstance = null;
+            }
+            if(grainPlayer) {
+                // grainPlayer segue o transport, mas garantimos:
+                // não damos dispose aqui para manter o setup do estudio
             }
             
-            // Pausa player nativo
             const nativeP = document.getElementById('castPlayerNative');
             nativeP.pause();
             
             updateBtn(false);
             document.querySelectorAll('.btn-play i').forEach(i=>i.className='fas fa-play');
+            
+            // Limpa metadados antigos para evitar confusão na TV
+            if ('mediaSession' in navigator) {
+                navigator.mediaSession.playbackState = "none";
+                navigator.mediaSession.metadata = null;
+            }
+            
+            clearInterval(syncInterval);
         }
 
         // --- 3. IMPORTAÇÃO ---
@@ -723,29 +731,48 @@
             try { return await Tone.context.decodeAudioData(await blob.arrayBuffer()); } catch (e) { throw new Error("Erro arquivo."); }
         }
 
+        // --- PLAY PREVIEW (SYNC FIXED) ---
         async function playPreview(id, btn) {
             try { await Tone.start(); unlockAudioSystem(); } catch (e) {}
+            
+            // Se for a mesma música tocando, pausa
             if(playerInstance && playerInstance.trackId === id && playerInstance.state === 'started') {
-                playerInstance.stop(); btn.querySelector('i').className = 'fas fa-play'; return;
+                playerInstance.stop(); 
+                btn.querySelector('i').className = 'fas fa-play'; 
+                return;
             }
+            
+            // Para tudo (Limpa metadados antigos)
             stopAllAudio();
+            
             const item = library.find(t => t.id === id);
             if(!item) return;
             currentTrack = item; 
+            
             showLoader("Carregando...");
             btn.querySelector('i').className = 'fas fa-spinner fa-spin';
+            
             try {
                 const audioBuffer = await getAudioBuffer(item.blob);
+                currentAudioBuffer = audioBuffer; // Guarda para sync
+                
                 playerInstance = new Tone.Player(audioBuffer).toDestination();
                 playerInstance.trackId = id;
                 connectAnalyser(playerInstance);
+                
                 playerInstance.onstop = () => {
                     if(btn && btn.querySelector('i')) btn.querySelector('i').className = 'fas fa-play';
                     if(playerInstance) { playerInstance.dispose(); playerInstance = null; }
+                    clearInterval(syncInterval);
                 };
-                hideLoader(); playerInstance.start(); 
-                unlockAudioSystem(); // FORÇA AUDIO
-                updateMediaSession(item.name); 
+                
+                hideLoader(); 
+                playerInstance.start(); 
+                
+                // FORCE SYNC & AUDIO
+                unlockAudioSystem(); 
+                updateMediaSession(item.name, audioBuffer.duration); 
+                
                 btn.querySelector('i').className = 'fas fa-stop';
             } catch(e) { hideLoader(); showToast("Erro."); btn.querySelector('i').className = 'fas fa-play'; }
         }
@@ -762,8 +789,13 @@
             drawVisualizer();
         }
         function connectAnalyser(source) { if(analyser) source.connect(analyser); }
+        
         function drawVisualizer() {
             requestAnimationFrame(drawVisualizer);
+            
+            // Atualiza Tempo na TV (UI) se em modo TV
+            if(isTvMode) updateTvTimeDisplay();
+
             if(!analyser) return;
             const canvas = document.getElementById('visualizerCanvas');
             const ctx = visualizerContext;
@@ -775,16 +807,14 @@
 
             ctx.clearRect(0, 0, width, height);
             
-            // Se estiver em modo TV, desenha um visualizador mais "grosso" e centralizado
+            // Visualizer TV Mode (Central)
             if(isTvMode) {
                  const centerX = width / 2;
                  const centerY = height / 2;
                  const radius = 100;
-                 
                  ctx.beginPath();
                  ctx.strokeStyle = `var(--primary)`;
                  ctx.lineWidth = 4;
-                 
                  for (let i = 0; i < bufferLength; i++) {
                      const barHeight = dataArray[i];
                      const rad = (i / bufferLength) * 2 * Math.PI;
@@ -797,22 +827,21 @@
                  return;
             }
 
-            // Visualizer Padrão (Barra inferior)
+            // Visualizer Padrão
             const hasSound = dataArray.some(val => val > 0);
             if(!hasSound) return;
             ctx.beginPath();
             const barWidth = (width / bufferLength) * 2.5;
-            let barHeight;
             let x = 0;
             for(let i = 0; i < bufferLength; i++) {
-                barHeight = dataArray[i];
+                const barHeight = dataArray[i];
                 ctx.fillStyle = `rgba(${barHeight + 50}, 255, 100, 0.3)`;
                 ctx.fillRect(x, height - barHeight, barWidth, barHeight);
                 x += barWidth + 1;
             }
         }
 
-        // --- ENGINE ---
+        // --- ENGINE (Studio) ---
         async function loadStudio(id) {
             await Tone.start(); unlockAudioSystem(); stopAllAudio();
             const item = library.find(t => t.id === id); if(!item) return;
@@ -839,8 +868,10 @@
             grainPlayer.grainSize = 0.2; grainPlayer.overlap = 0.1;
             grainPlayer.sync().start(0); 
             connectAnalyser(grainPlayer);
+            
             Tone.Transport.on('stop', () => updateBtn(false));
             Tone.Transport.scheduleOnce(() => { Tone.Transport.pause(); updateBtn(false); }, buffer.duration);
+            
             hideLoader();
             document.getElementById('studioStatus').innerText = "Pronto. " + buffer.duration.toFixed(1) + "s";
             setTone(0, document.querySelector('.t-btn.orig'));
@@ -874,16 +905,17 @@
         async function togglePlay() {
             if(!grainPlayer) { showToast("Carregue uma música."); return; }
             await Tone.start();
-            unlockAudioSystem(); // GARANTIA DE AUDIO
+            unlockAudioSystem(); 
+            
             if(Tone.Transport.state === 'started') {
                 Tone.Transport.pause(); 
                 audioUnlocker.pause();
                 updateBtn(false);
             } else {
                 Tone.Transport.start(); 
-                audioUnlocker.play(); // MANTEM O AUDIO ATIVO
+                audioUnlocker.play(); 
                 updateBtn(true);
-                updateMediaSession(currentTrack.name);
+                updateMediaSession(currentTrack.name, currentAudioBuffer.duration);
             }
         }
 
@@ -896,27 +928,72 @@
             }
         }
 
-        // --- CONEXÃO / CASTING ---
-        function openCastModal() {
-            if (!currentTrack) { showToast("Selecione uma música."); return; }
-            openModal('castModal');
-        }
-        function closeCastModal() {
-            document.getElementById('nativePlayerContainer').style.display='none';
-            closeModal('castModal');
+        // --- SYNC & TIME DISPLAY ---
+        function updateTvTimeDisplay() {
+            let time = 0;
+            // Pega o tempo real de onde estiver tocando
+            if(Tone.Transport.state === 'started') time = Tone.Transport.seconds;
+            else if(playerInstance && playerInstance.state === 'started') time = Tone.context.currentTime; // Estimativa simples para preview
+            
+            // Formata MM:SS
+            const mins = Math.floor(time / 60);
+            const secs = Math.floor(time % 60);
+            const fmt = (mins < 10 ? "0"+mins : mins) + ":" + (secs < 10 ? "0"+secs : secs);
+            document.getElementById('tvTimeDisplay').innerText = fmt;
         }
 
-        // Opção 1: Modo TV (Visualizer + Espelhamento)
+        // Media Session (HEARTBEAT IMPLEMENTATION)
+        // Isso força a TV a atualizar a barra de progresso
+        function updateMediaSession(title, duration = 0) {
+            if ('mediaSession' in navigator) {
+                navigator.mediaSession.metadata = new MediaMetadata({
+                    title: title,
+                    artist: 'VocalStudio Pro',
+                    artwork: [{ src: 'https://cdn-icons-png.flaticon.com/512/3039/3039462.png', sizes: '512x512', type: 'image/png' }]
+                });
+
+                // Clear previous interval
+                clearInterval(syncInterval);
+
+                // Start new Heartbeat
+                syncInterval = setInterval(() => {
+                    if(!currentAudioBuffer) return;
+                    
+                    let currentTime = 0;
+                    if(Tone.Transport.state === 'started') currentTime = Tone.Transport.seconds;
+                    
+                    // Força update de estado na TV/Bluetooth
+                    if(!isNaN(duration) && duration > 0) {
+                        try {
+                            navigator.mediaSession.setPositionState({
+                                duration: duration,
+                                playbackRate: 1,
+                                position: Math.min(currentTime, duration)
+                            });
+                        } catch(e) { /* Ignore rounding errors */ }
+                    }
+                }, 1000); // Atualiza a cada segundo
+
+                navigator.mediaSession.setActionHandler('play', () => { 
+                    if(grainPlayer) { Tone.Transport.start(); audioUnlocker.play(); updateBtn(true); }
+                });
+                navigator.mediaSession.setActionHandler('pause', () => { 
+                    Tone.Transport.pause(); audioUnlocker.pause(); updateBtn(false);
+                });
+            }
+        }
+
+        // --- MODAL DE CONEXÃO ---
+        function openCastModal() { if (!currentTrack) { showToast("Selecione uma música."); return; } openModal('castModal'); }
+        function closeCastModal() { document.getElementById('nativePlayerContainer').style.display='none'; closeModal('castModal'); }
+
+        // MODO TV
         async function activateTvMode() {
-            await Tone.start(); unlockAudioSystem(); // Kickstart
+            await Tone.start(); unlockAudioSystem();
             closeCastModal();
             toggleTvMode(true);
             showToast("Modo TV Ativo!");
-            
-            // Se temos motor pronto mas parado, dá play para sair som no espelhamento
-            if(grainPlayer && Tone.Transport.state !== 'started') {
-                togglePlay();
-            }
+            if(grainPlayer && Tone.Transport.state !== 'started') togglePlay();
         }
 
         function toggleTvMode(active) {
@@ -931,48 +1008,22 @@
             }
         }
 
-        // Opção 2: Player Nativo (Fallback)
+        // NATIVE PLAYER (Audio Puro)
         async function activateNativePlayer() {
-            await Tone.start(); unlockAudioSystem();
-            stopAllAudio(); // Para o motor de efeitos
-            
+            await Tone.start(); unlockAudioSystem(); stopAllAudio();
             if(!currentTrack || !currentTrack.blob) return;
-
             const blobUrl = URL.createObjectURL(currentTrack.blob);
             const nativeP = document.getElementById('castPlayerNative');
-            
             nativeP.src = blobUrl;
             nativeP.style.display = 'block';
             document.getElementById('nativePlayerContainer').style.display = 'block';
-            
-            nativeP.load(); // Força carregamento
-            
-            // Tenta dar play com tratamento de erro
+            nativeP.load();
             nativeP.play().then(() => {
-                updateMediaSession(currentTrack.name);
-            }).catch(e => {
-                console.error("Erro playback nativo:", e);
-                showToast("Toque no play manualmente.");
-            });
-        }
-
-        // Media Session (Para controle na tela de bloqueio e TV via Bluetooth)
-        function updateMediaSession(title) {
-            if ('mediaSession' in navigator) {
-                navigator.mediaSession.metadata = new MediaMetadata({
-                    title: title,
-                    artist: 'VocalStudio Pro',
-                    artwork: [{ src: 'https://cdn-icons-png.flaticon.com/512/3039/3039462.png', sizes: '512x512', type: 'image/png' }]
-                });
-                navigator.mediaSession.setActionHandler('play', () => { 
-                    if(document.getElementById('castPlayerNative').style.display === 'block') document.getElementById('castPlayerNative').play();
-                    else if(grainPlayer) { Tone.Transport.start(); audioUnlocker.play(); updateBtn(true); }
-                });
-                navigator.mediaSession.setActionHandler('pause', () => { 
-                    if(document.getElementById('castPlayerNative').style.display === 'block') document.getElementById('castPlayerNative').pause();
-                    else { Tone.Transport.pause(); audioUnlocker.pause(); updateBtn(false); }
-                });
-            }
+                // Atualiza metadados básicos sem sync complexo para nativo
+                if ('mediaSession' in navigator) {
+                    navigator.mediaSession.metadata = new MediaMetadata({ title: currentTrack.name });
+                }
+            }).catch(e => showToast("Play manual necessário."));
         }
 
         // --- SALVAR/EXPORTAR ---
