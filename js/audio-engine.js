@@ -1,105 +1,110 @@
+// 1. Importação segura da biblioteca via ESM
+import { PitchShifter } from 'https://esm.sh/soundtouchjs@1.0.29';
+
+// 2. Variáveis de Estado
+let myAudioCtx = null; 
 let currentAudioBuffer = null;
-let currentTrackName = "";
-let soundTouchNode = null; 
+let shifterNode = null; 
 let isPlaying = false;
 let currentPitchRatio = 1.0;
-let myAudioCtx = null; // Inicia vazio para o navegador não travar a tela!
 
-// Função para ligar o motor APENAS quando necessário
-function getAudioContext() {
+// Função para iniciar o contexto de áudio SOMENTE após interação do usuário
+function initAudioContext() {
     if (!myAudioCtx) {
-        myAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        myAudioCtx = new AudioContext();
     }
     return myAudioCtx;
 }
 
-async function loadAudioForStudio(item) {
+// 3. Funções Expostas para o HTML e para o app.js
+window.loadAudioForStudio = async function(item) {
     try {
-        currentTrackName = item.name;
-        const ctx = getAudioContext(); // Acorda o motor aqui
+        const ctx = initAudioContext();
         
-        // Decodifica o áudio
+        // Decodifica o áudio do IndexedDB
         const arrayBuffer = await item.blob.arrayBuffer();
         currentAudioBuffer = await ctx.decodeAudioData(arrayBuffer);
         
-        document.getElementById('studioStatus').innerText = `Motor Ativo | Duração: ${Math.round(currentAudioBuffer.duration)}s`;
+        document.getElementById('studioStatus').innerText = `Motor: SoundTouchJS | Duração: ${Math.round(currentAudioBuffer.duration)}s`;
         
-        if (isPlaying) togglePlay(); 
-        setTone(0, document.querySelector('.t-btn.orig'));
+        // Limpa estado anterior se houver
+        if (isPlaying) await window.togglePlay(); 
+        window.setTone(0, document.querySelector('.t-btn.orig'));
         
-    } catch (e) {
-        console.error(e);
-        document.getElementById('studioStatus').innerText = "Erro ao carregar áudio. Arquivo incompatível?";
+    } catch (error) {
+        console.error("Erro na decodificação:", error);
+        document.getElementById('studioStatus').innerText = "Falha ao processar o formato do arquivo.";
     }
-}
+};
 
-function setTone(semitones, btnElement) {
-    if (!currentAudioBuffer) return;
+window.setTone = function(semitones, btnElement) {
+    if (!currentAudioBuffer) return; // Só permite se tiver música
     
+    // Atualiza botões
     document.querySelectorAll('.t-btn').forEach(b => b.classList.remove('active'));
     if (btnElement) btnElement.classList.add('active');
 
-    // Transforma semitons na proporção matemática
+    // Transforma o número de semitons em Ratio. Ex: +1 semiton = ~1.059 ratio
     currentPitchRatio = Math.pow(2, semitones / 12);
     
-    if (soundTouchNode && isPlaying) {
-        soundTouchNode.pitch = currentPitchRatio;
+    // Atualiza o som instantaneamente se estiver tocando
+    if (shifterNode && isPlaying) {
+        shifterNode.pitch = currentPitchRatio;
     }
-}
+};
 
-async function togglePlay() {
+window.togglePlay = async function() {
     if (!currentAudioBuffer) {
-        alert("Nenhum áudio carregado. Vá na biblioteca e envie uma música para o Estúdio.");
+        alert("Por favor, importe e selecione um playback na aba Biblioteca primeiro.");
         return;
     }
 
-    const ctx = getAudioContext(); // Garante que o motor está rodando
+    const ctx = initAudioContext();
 
+    // Acorda o navegador se ele suspendeu o áudio para poupar bateria
     if (ctx.state === 'suspended') {
         await ctx.resume();
     }
 
+    const btnPlay = document.getElementById('btnPlay');
+
     if (isPlaying) {
-        // PAUSAR
-        if (soundTouchNode) {
-            soundTouchNode.disconnect();
-            soundTouchNode = null;
+        // ROTINA DE PAUSE
+        if (shifterNode && shifterNode.node) {
+            shifterNode.node.disconnect();
+            shifterNode = null;
         }
         isPlaying = false;
         
-        const btn = document.getElementById('btnPlay');
-        btn.innerHTML = '<i class="fas fa-play"></i> Reproduzir';
-        btn.style.background = "var(--text-main)";
-        btn.style.color = "var(--bg-base)";
+        // UI
+        btnPlay.innerHTML = '<i class="fas fa-play"></i> Reproduzir';
+        btnPlay.style.background = "var(--text-main)";
+        btnPlay.style.color = "var(--bg-base)";
         
     } else {
-        // TOCAR
+        // ROTINA DE PLAY (Cria a instância do PitchShifter)
         try {
-            const ShifterClass = window.PitchShifter || (window.SoundTouchJS ? window.SoundTouchJS.PitchShifter : null);
+            // Buffer size 4096 é o equilíbrio perfeito entre não travar e não ter delay
+            shifterNode = new PitchShifter(ctx, currentAudioBuffer, 4096);
+            shifterNode.pitch = currentPitchRatio;
             
-            if (!ShifterClass) {
-                alert("Motor SoundTouchJS bloqueado. Verifique sua conexão ou desative o AdBlock.");
-                return;
-            }
-
-            soundTouchNode = new ShifterClass(ctx, currentAudioBuffer, 2048);
-            soundTouchNode.pitch = currentPitchRatio;
-            
-            soundTouchNode.connect(ctx.destination);
+            // O PitchShifter do SoundTouchJS expõe um ScriptProcessorNode chamado "node"
+            shifterNode.node.connect(ctx.destination);
             isPlaying = true;
 
-            const btn = document.getElementById('btnPlay');
-            btn.innerHTML = '<i class="fas fa-pause"></i> Pausar';
-            btn.style.background = "#ff3b30";
-            btn.style.color = "#fff";
+            // UI
+            btnPlay.innerHTML = '<i class="fas fa-pause"></i> Pausar';
+            btnPlay.style.background = "#ff3b30";
+            btnPlay.style.color = "#fff";
 
         } catch (error) {
-            console.error("Erro ao iniciar reprodução:", error);
-            alert("Ocorreu um erro ao processar o áudio.");
+            console.error("Erro ao iniciar motor:", error);
+            alert("Erro no motor de áudio. Tente recarregar a página.");
         }
     }
-}
+};
 
-function exportTrack() {
-    alert("Gravação direta em desenvolvimento. Conecte o cabo auxiliar direto na mesa de som ou grave a tela para capturar a qualidade máxima!");
-}
+window.exportTrack = function() {
+    alert("DICA KMZ: Devido à complexidade do SoundTouchJS, a gravação não ocorre offline no navegador celular. \n\nConecte a saída de fone do seu aparelho direto na mesa de som ou caixa amplificada, selecione o tom, e dê o play!");
+};
