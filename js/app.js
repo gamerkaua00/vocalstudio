@@ -1,91 +1,150 @@
-// js/app.js
-document.addEventListener('DOMContentLoaded', () => {
-    // 1. Splash Screen Logic
-    setTimeout(() => {
-        const splash = document.getElementById('splashScreen');
-        splash.style.opacity = '0';
-        setTimeout(() => splash.style.display = 'none', 500);
-        document.getElementById('dbStatus').innerText = "Sistema Pronto";
-        document.getElementById('dbStatus').style.color = "var(--kmz-blue)";
-    }, 1500);
+let db;
+let library = [];
+let editingId = null;
 
-    // 2. Tab Navigation
-    const tabs = document.querySelectorAll('.tab-btn');
-    const screens = document.querySelectorAll('.screen');
+// Inicializa o Banco de Dados
+const req = indexedDB.open("KMZ_VocalStudio_Pro", 1);
+req.onupgradeneeded = e => {
+    db = e.target.result;
+    if (!db.objectStoreNames.contains('tracks')) {
+        db.createObjectStore('tracks', { keyPath: 'id', autoIncrement: true });
+    }
+};
+req.onsuccess = e => {
+    db = e.target.result;
+    document.getElementById('dbStatus').innerText = "DB OK";
+    document.getElementById('dbStatus').style.color = "var(--kmz-blue)";
+    loadTracks();
+};
 
-    tabs.forEach(tab => {
-        tab.addEventListener('click', () => {
-            tabs.forEach(t => t.classList.remove('active'));
-            screens.forEach(s => s.classList.remove('active'));
-            
-            tab.classList.add('active');
-            document.getElementById(`screen-${tab.dataset.target}`).classList.add('active');
-        });
-    });
-
-    // 3. Importação de Arquivo
-    const btnImport = document.getElementById('btnImport');
-    const fileInput = document.getElementById('fileInput');
-
-    btnImport.addEventListener('click', async () => {
-        // Obrigatório iniciar o contexto de áudio do Tone.js num clique de usuário
-        await Tone.start(); 
-        fileInput.click();
-    });
-
-    fileInput.addEventListener('change', async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-
-        document.getElementById('studioName').innerText = "Carregando faixa...";
-        document.getElementById('studioStatus').innerText = "Processando áudio original...";
+// Navegação de Abas
+document.querySelectorAll('.tab-btn').forEach(tab => {
+    tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
         
-        // Simula uma lista de biblioteca simples
-        document.getElementById('libList').innerHTML = `
-            <div style="padding: 15px; background: var(--bg-panel); border: 1px solid var(--kmz-blue); border-radius: 6px; margin-top: 15px;">
-                <strong>${file.name}</strong> <br>
-                <span style="font-size: 0.8rem; color: var(--text-muted)">Pronto para edição</span>
-            </div>
-        `;
-
-        // Navega para o estúdio automaticamente
-        tabs[1].click();
-        
-        // Passa o arquivo para o Motor de Áudio
-        await loadAudioTrack(file);
+        tab.classList.add('active');
+        document.getElementById(`screen-${tab.dataset.target}`).classList.add('active');
     });
-
-    // 4. Controles de Tom
-    const pitchButtons = document.querySelectorAll('.t-btn');
-    pitchButtons.forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            pitchButtons.forEach(b => b.classList.remove('active'));
-            e.target.classList.add('active');
-            
-            const semitones = parseInt(e.target.dataset.pitch);
-            setAudioPitch(semitones);
-        });
-    });
-
-    // 5. Controles de Playback
-    const btnPlay = document.getElementById('btnPlay');
-    btnPlay.addEventListener('click', togglePlayback);
-
-    // 6. Exportar
-    const btnExport = document.getElementById('btnExport');
-    btnExport.addEventListener('click', exportTrack);
 });
 
-// Função chamada pelo audio-engine.js para atualizar o botão de Play/Pause na UI
-function updatePlayButtonUI(isPlaying) {
-    const btnPlay = document.getElementById('btnPlay');
-    if (isPlaying) {
-        btnPlay.innerHTML = '<i class="fas fa-pause"></i> Pausar';
-        btnPlay.style.background = "#ff3b30"; // Vermelho suave para pause
-        btnPlay.style.color = "#fff";
-    } else {
-        btnPlay.innerHTML = '<i class="fas fa-play"></i> Reproduzir';
-        btnPlay.style.background = "var(--text-main)";
-        btnPlay.style.color = "var(--bg-base)";
+// Importação e Banco de Dados
+async function handleImport(files) {
+    if (!files.length) return;
+    const file = files[0];
+    const name = file.name.replace(/\.[^/.]+$/, "");
+    
+    const tx = db.transaction(['tracks'], 'readwrite');
+    tx.objectStore('tracks').add({ name: name, blob: file, date: Date.now() });
+    
+    tx.oncomplete = () => {
+        loadTracks();
+        document.getElementById('fileInput').value = ''; 
+    };
+}
+
+function loadTracks() {
+    const tx = db.transaction(['tracks'], 'readonly');
+    tx.objectStore('tracks').getAll().onsuccess = e => {
+        library = e.target.result.reverse();
+        renderLib();
+    };
+}
+
+function renderLib() {
+    const list = document.getElementById('libList');
+    list.innerHTML = "";
+    if (!library.length) {
+        list.innerHTML = `<div style="text-align:center; padding:20px; color:var(--text-muted)">Nenhum playback na biblioteca</div>`;
+        return;
+    }
+    
+    library.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'media-item';
+        
+        div.innerHTML = `
+            <div class="media-title">${item.name}</div>
+            <div class="media-date">${new Date(item.date).toLocaleDateString()}</div>
+            
+            <div class="media-actions">
+                <div class="action-group">
+                    <button class="btn-icon" onclick="previewLibTrack(${item.id}, this)"><i class="fas fa-play"></i></button>
+                    <button class="btn-icon blue" onclick="sendToStudio(${item.id})"><i class="fas fa-sliders-h"></i> Estúdio</button>
+                </div>
+                <div class="action-group">
+                    <button class="btn-icon yellow" onclick="openRename(${item.id})"><i class="fas fa-pen"></i></button>
+                    <button class="btn-icon red" onclick="deleteTrack(${item.id})"><i class="fas fa-trash"></i></button>
+                </div>
+            </div>
+        `;
+        list.appendChild(div);
+    });
+}
+
+// Funções da Biblioteca
+let previewPlayer = null;
+
+async function previewLibTrack(id, btn) {
+    await Tone.start();
+    const item = library.find(t => t.id === id);
+    if (!item) return;
+
+    if (previewPlayer && previewPlayer.state === 'started') {
+        previewPlayer.stop();
+        previewPlayer.dispose();
+        previewPlayer = null;
+        document.querySelectorAll('.fa-stop').forEach(i => i.className = 'fas fa-play');
+        return;
+    }
+
+    btn.querySelector('i').className = 'fas fa-spinner fa-spin';
+    const buffer = await Tone.context.decodeAudioData(await item.blob.arrayBuffer());
+    
+    previewPlayer = new Tone.Player(buffer).toDestination();
+    previewPlayer.onstop = () => { btn.querySelector('i').className = 'fas fa-play'; };
+    previewPlayer.start();
+    btn.querySelector('i').className = 'fas fa-stop';
+}
+
+function openRename(id) {
+    editingId = id;
+    const item = library.find(t => t.id === id);
+    document.getElementById('renameInput').value = item.name;
+    document.getElementById('renameModal').style.display = 'flex';
+}
+
+document.getElementById('btnConfirmRename').onclick = () => {
+    const newName = document.getElementById('renameInput').value;
+    if (newName && editingId) {
+        const tx = db.transaction(['tracks'], 'readwrite');
+        tx.objectStore('tracks').get(editingId).onsuccess = e => {
+            const data = e.target.result;
+            data.name = newName;
+            tx.objectStore('tracks').put(data).onsuccess = () => {
+                loadTracks();
+                document.getElementById('renameModal').style.display = 'none';
+            };
+        };
+    }
+};
+
+function deleteTrack(id) {
+    if (confirm("Tem certeza que deseja excluir este playback?")) {
+        const tx = db.transaction(['tracks'], 'readwrite');
+        tx.objectStore('tracks').delete(id).onsuccess = () => loadTracks();
+    }
+}
+
+async function sendToStudio(id) {
+    const item = library.find(t => t.id === id);
+    if (!item) return;
+    
+    document.querySelector('[data-target="studio"]').click();
+    document.getElementById('studioName').innerText = item.name;
+    document.getElementById('studioStatus').innerText = "Preparando motor SoundTouchJS...";
+    
+    if(typeof loadAudioForStudio === "function") {
+        await loadAudioForStudio(item);
     }
 }
