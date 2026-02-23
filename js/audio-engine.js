@@ -1,170 +1,85 @@
-// js/audio-engine.js
+let currentAudioBuffer = null;
+let currentTrackName = "";
+let soundTouchNode = null; 
+let isPlaying = false;
+let currentPitchRatio = 1.0;
 
-let player = null;
-let pitchShift = null;
-let currentBuffer = null;
-let trackFileName = "playback_kmz";
+// Utiliza o Web Audio Context nativo por baixo dos panos do Tone.js
+const audioCtx = Tone.context.rawContext;
 
-// Inicializa e carrega a música
-async function loadAudioTrack(file) {
+async function loadAudioForStudio(item) {
     try {
-        trackFileName = file.name.replace(/\.[^/.]+$/, ""); // Pega o nome sem a extensão
+        currentTrackName = item.name;
         
-        // Converte o arquivo em ArrayBuffer para o Tone.js decodificar
-        const arrayBuffer = await file.arrayBuffer();
-        const audioBuffer = await Tone.context.decodeAudioData(arrayBuffer);
-        currentBuffer = audioBuffer;
-
-        // Limpa instâncias anteriores para liberar memória RAM
-        if (player) player.dispose();
-        if (pitchShift) pitchShift.dispose();
-        Tone.Transport.stop();
-        Tone.Transport.seconds = 0;
-
-        // CRIA O NOVO MOTOR: PitchShift de alta fidelidade
-        // O windowSize controla a suavidade. 0.1 é um bom padrão para músicas completas.
-        pitchShift = new Tone.PitchShift({
-            pitch: 0,
-            windowSize: 0.1, 
-            delayTime: 0,
-            feedback: 0
-        }).toDestination();
-
-        // Cria o Player padrão e conecta ao PitchShift
-        player = new Tone.Player(audioBuffer).connect(pitchShift);
+        // Decodifica o áudio do banco de dados
+        const arrayBuffer = await item.blob.arrayBuffer();
+        currentAudioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
         
-        // Sincroniza com a linha do tempo principal
-        player.sync().start(0);
-
-        // Atualiza a Interface
-        document.getElementById('studioName').innerText = trackFileName;
-        document.getElementById('studioStatus').innerText = `Motor Base: Tone.PitchShift | Duração: ${Math.round(audioBuffer.duration)}s`;
+        document.getElementById('studioStatus').innerText = `Motor: SoundTouchJS | Duração: ${Math.round(currentAudioBuffer.duration)}s`;
         
-        // Reseta botões
-        updatePlayButtonUI(false);
-        setAudioPitch(0);
-        document.querySelector('.t-btn.orig').classList.add('active');
-
-    } catch (error) {
-        console.error("Erro ao processar áudio:", error);
-        document.getElementById('studioStatus').innerText = "Erro ao processar o arquivo de áudio.";
+        // Reseta tudo ao carregar uma nova música
+        if (isPlaying) togglePlay();
+        setTone(0, document.querySelector('.t-btn.orig'));
+        
+    } catch (e) {
+        console.error(e);
+        document.getElementById('studioStatus').innerText = "Erro ao carregar áudio.";
     }
 }
 
-// Altera o Tom
-function setAudioPitch(semitones) {
-    if (!pitchShift) return;
+function setTone(semitones, btnElement) {
+    if (!currentAudioBuffer) return;
     
-    // O Tone.PitchShift recebe o valor diretamente em semitons (ex: -2, 1, 3)
-    pitchShift.pitch = semitones;
-    console.log(`KMZ Engine: Tom alterado para ${semitones} semitons.`);
+    // Atualiza botões na interface
+    document.querySelectorAll('.t-btn').forEach(b => b.classList.remove('active'));
+    if (btnElement) btnElement.classList.add('active');
+
+    // Transforma semitons (+1, -2, etc) na proporção matemática que o motor entende
+    currentPitchRatio = Math.pow(2, semitones / 12);
+    
+    // Se a música já estiver tocando, aplica a mudança na hora
+    if (soundTouchNode && isPlaying) {
+        soundTouchNode.pitch = currentPitchRatio;
+    }
 }
 
-// Reproduzir / Pausar
-async function togglePlayback() {
-    if (!player) {
-        alert("Por favor, importe uma faixa primeiro.");
+async function togglePlay() {
+    if (!currentAudioBuffer) {
+        alert("Carregue uma música no estúdio primeiro.");
         return;
     }
 
-    await Tone.start(); // Garante que o contexto de áudio do navegador está ativo
-
-    if (Tone.Transport.state === 'started') {
-        Tone.Transport.pause();
-        updatePlayButtonUI(false);
+    if (isPlaying) {
+        // Para a música
+        if (soundTouchNode) {
+            soundTouchNode.disconnect();
+            soundTouchNode = null;
+        }
+        isPlaying = false;
+        document.getElementById('btnPlay').innerHTML = '<i class="fas fa-play"></i> Reproduzir';
+        document.getElementById('btnPlay').style.background = "var(--text-main)";
+        document.getElementById('btnPlay').style.color = "var(--bg-base)";
     } else {
-        Tone.Transport.start();
-        updatePlayButtonUI(true);
+        // Toca a música ativando o contexto
+        if (audioCtx.state === 'suspended') {
+            await audioCtx.resume();
+        }
+        
+        // Configura o PitchShifter do SoundTouchJS
+        soundTouchNode = new SoundTouchJS.PitchShifter(audioCtx, currentAudioBuffer, 16384);
+        soundTouchNode.pitch = currentPitchRatio;
+        
+        // Conecta nas caixas de som e começa a tocar
+        soundTouchNode.connect(audioCtx.destination);
+        
+        isPlaying = true;
+        document.getElementById('btnPlay').innerHTML = '<i class="fas fa-pause"></i> Pausar';
+        document.getElementById('btnPlay').style.background = "#ff3b30";
+        document.getElementById('btnPlay').style.color = "#fff";
     }
 }
 
-// Renderizar e Exportar a nova versão
-async function exportTrack() {
-    if (!currentBuffer || !pitchShift) {
-        alert("Nenhuma faixa carregada para exportar.");
-        return;
-    }
-
-    const currentPitch = pitchShift.pitch;
-    
-    // Alerta o usuário (Renderização no navegador celular pode ser pesada)
-    document.getElementById('studioStatus').innerText = "Renderizando... Aguarde (Isso pode travar a tela por uns segundos).";
-    
-    try {
-        // Pausa a reprodução atual para economizar processamento
-        if (Tone.Transport.state === 'started') {
-            await togglePlayback();
-        }
-
-        // Renderização Offline (Processa o áudio em velocidade máxima no background)
-        const renderedBuffer = await Tone.Offline(async () => {
-            const offlinePitchShift = new Tone.PitchShift({
-                pitch: currentPitch,
-                windowSize: 0.1
-            }).toDestination();
-            
-            const offlinePlayer = new Tone.Player(currentBuffer).connect(offlinePitchShift);
-            offlinePlayer.start(0);
-        }, currentBuffer.duration);
-
-        // Converte o buffer renderizado para um arquivo WAV
-        const wavBlob = bufferToWave(renderedBuffer, renderedBuffer.length);
-        
-        // Força o download
-        const url = URL.createObjectURL(wavBlob);
-        const a = document.createElement('a');
-        a.style.display = 'none';
-        a.href = url;
-        const sign = currentPitch > 0 ? "+" : "";
-        a.download = `${trackFileName}_KMZ_Tom_${sign}${currentPitch}.wav`;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        
-        document.getElementById('studioStatus').innerText = "Download concluído com sucesso!";
-
-    } catch (error) {
-        console.error("Erro na exportação:", error);
-        document.getElementById('studioStatus').innerText = "Erro ao exportar. Arquivo muito grande para a memória do navegador.";
-    }
-}
-
-// ENCODER WAV (O mesmo que você já usava, é o método mais robusto para JS puro)
-function bufferToWave(abuffer, len) {
-    const numOfChan = abuffer.numberOfChannels;
-    const length = len * numOfChan * 2 + 44;
-    const buffer = new ArrayBuffer(length);
-    const view = new DataView(buffer);
-    const channels = [];
-    let i, sample, offset = 0, pos = 0;
-
-    function setUint16(data) { view.setUint16(pos, data, true); pos += 2; }
-    function setUint32(data) { view.setUint32(pos, data, true); pos += 4; }
-
-    setUint32(0x46464952); // "RIFF"
-    setUint32(length - 8);
-    setUint32(0x45564157); // "WAVE"
-    setUint32(0x20746d66); // "fmt "
-    setUint32(16);
-    setUint16(1);
-    setUint16(numOfChan);
-    setUint32(abuffer.sampleRate);
-    setUint32(abuffer.sampleRate * 2 * numOfChan);
-    setUint16(numOfChan * 2);
-    setUint16(16);
-    setUint32(0x61746164); // "data"
-    setUint32(length - pos - 4);
-
-    for (i = 0; i < abuffer.numberOfChannels; i++) channels.push(abuffer.getChannelData(i));
-
-    while (offset < len) {
-        for (i = 0; i < numOfChan; i++) {
-            sample = Math.max(-1, Math.min(1, channels[i][offset]));
-            sample = (sample < 0 ? sample * 0x8000 : sample * 0x7FFF) | 0;
-            view.setInt16(pos, sample, true);
-            pos += 2;
-        }
-        offset++;
-    }
-    return new Blob([buffer], { type: "audio/wav" });
+function exportTrack() {
+    // Alerta temporário para proteger a memória do celular
+    alert("Gravação direta em desenvolvimento. Para usar agora, conecte a saída de áudio do dispositivo diretamente na mesa de som, ou use um gravador de tela.");
 }
