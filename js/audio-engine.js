@@ -4,40 +4,37 @@ let soundTouchNode = null;
 let isPlaying = false;
 let currentPitchRatio = 1.0;
 
-// Utiliza o Web Audio Context nativo por baixo dos panos do Tone.js
-const audioCtx = Tone.context.rawContext;
+// Cria um contexto de áudio totalmente independente (O Tone.js costuma causar conflitos)
+const myAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
 async function loadAudioForStudio(item) {
     try {
         currentTrackName = item.name;
         
-        // Decodifica o áudio do banco de dados
+        // Decodifica o áudio
         const arrayBuffer = await item.blob.arrayBuffer();
-        currentAudioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+        currentAudioBuffer = await myAudioCtx.decodeAudioData(arrayBuffer);
         
-        document.getElementById('studioStatus').innerText = `Motor: SoundTouchJS | Duração: ${Math.round(currentAudioBuffer.duration)}s`;
+        document.getElementById('studioStatus').innerText = `Motor Ativo | Duração: ${Math.round(currentAudioBuffer.duration)}s`;
         
-        // Reseta tudo ao carregar uma nova música
-        if (isPlaying) togglePlay();
+        if (isPlaying) togglePlay(); // Pausa se tiver tocando algo anterior
         setTone(0, document.querySelector('.t-btn.orig'));
         
     } catch (e) {
         console.error(e);
-        document.getElementById('studioStatus').innerText = "Erro ao carregar áudio.";
+        document.getElementById('studioStatus').innerText = "Erro ao carregar áudio. Arquivo corrompido?";
     }
 }
 
 function setTone(semitones, btnElement) {
     if (!currentAudioBuffer) return;
     
-    // Atualiza botões na interface
     document.querySelectorAll('.t-btn').forEach(b => b.classList.remove('active'));
     if (btnElement) btnElement.classList.add('active');
 
-    // Transforma semitons (+1, -2, etc) na proporção matemática que o motor entende
+    // 0 = 1.0 (Original) | Fórmula matemática avançada
     currentPitchRatio = Math.pow(2, semitones / 12);
     
-    // Se a música já estiver tocando, aplica a mudança na hora
     if (soundTouchNode && isPlaying) {
         soundTouchNode.pitch = currentPitchRatio;
     }
@@ -45,41 +42,61 @@ function setTone(semitones, btnElement) {
 
 async function togglePlay() {
     if (!currentAudioBuffer) {
-        alert("Carregue uma música no estúdio primeiro.");
+        alert("Nenhum áudio carregado. Vá na biblioteca e envie uma música para o Estúdio.");
         return;
     }
 
+    // Se o navegador suspendeu o áudio (política de autoplay), a gente acorda ele
+    if (myAudioCtx.state === 'suspended') {
+        await myAudioCtx.resume();
+    }
+
     if (isPlaying) {
-        // Para a música
+        // PARAR A MÚSICA
         if (soundTouchNode) {
             soundTouchNode.disconnect();
             soundTouchNode = null;
         }
         isPlaying = false;
-        document.getElementById('btnPlay').innerHTML = '<i class="fas fa-play"></i> Reproduzir';
-        document.getElementById('btnPlay').style.background = "var(--text-main)";
-        document.getElementById('btnPlay').style.color = "var(--bg-base)";
+        
+        // Atualiza UI
+        const btn = document.getElementById('btnPlay');
+        btn.innerHTML = '<i class="fas fa-play"></i> Reproduzir';
+        btn.style.background = "var(--text-main)";
+        btn.style.color = "var(--bg-base)";
+        
     } else {
-        // Toca a música ativando o contexto
-        if (audioCtx.state === 'suspended') {
-            await audioCtx.resume();
+        // TOCAR A MÚSICA
+        try {
+            // Se SoundTouchJS não foi carregado pelo HTML, joga um erro
+            const ShifterClass = window.PitchShifter || (window.SoundTouchJS ? window.SoundTouchJS.PitchShifter : null);
+            
+            if (!ShifterClass) {
+                alert("Erro crítico: Motor SoundTouchJS não encontrado.");
+                return;
+            }
+
+            // Inicia o motor com buffer de 2048 (seguro para mobile, 16384 era o que travava)
+            soundTouchNode = new ShifterClass(myAudioCtx, currentAudioBuffer, 2048);
+            soundTouchNode.pitch = currentPitchRatio;
+            
+            // Conecta à saída principal do celular/pc e começa
+            soundTouchNode.connect(myAudioCtx.destination);
+            isPlaying = true;
+
+            // Atualiza UI
+            const btn = document.getElementById('btnPlay');
+            btn.innerHTML = '<i class="fas fa-pause"></i> Pausar';
+            btn.style.background = "#ff3b30";
+            btn.style.color = "#fff";
+
+        } catch (error) {
+            console.error("Erro ao iniciar reprodução:", error);
+            alert("Ocorreu um erro ao processar o áudio. Tente recarregar a página.");
         }
-        
-        // Configura o PitchShifter do SoundTouchJS
-        soundTouchNode = new SoundTouchJS.PitchShifter(audioCtx, currentAudioBuffer, 16384);
-        soundTouchNode.pitch = currentPitchRatio;
-        
-        // Conecta nas caixas de som e começa a tocar
-        soundTouchNode.connect(audioCtx.destination);
-        
-        isPlaying = true;
-        document.getElementById('btnPlay').innerHTML = '<i class="fas fa-pause"></i> Pausar';
-        document.getElementById('btnPlay').style.background = "#ff3b30";
-        document.getElementById('btnPlay').style.color = "#fff";
     }
 }
 
 function exportTrack() {
-    // Alerta temporário para proteger a memória do celular
-    alert("Gravação direta em desenvolvimento. Para usar agora, conecte a saída de áudio do dispositivo diretamente na mesa de som, ou use um gravador de tela.");
+    alert("Gravação em tempo real: Para salvar o arquivo com o timbre perfeito, por favor use um aplicativo de gravação de tela, ou conecte a saída de fone do celular diretamente na mesa de som!");
 }
