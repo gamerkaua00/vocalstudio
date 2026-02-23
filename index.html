@@ -19,6 +19,18 @@
         <div style="font-size: 0.9rem; letter-spacing: 3px; color: #2563EB; margin-top: 10px;">AUDIO TECHNOLOGIES</div>
         <div style="margin-top: 30px; font-size: 0.8rem; color: #9CA3AF;">Carregando motores de áudio...</div>
     </div>
+    <script>
+        // Blindagem: Garante que a tela de loading suma após 3s independentemente dos scripts externos
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                const splash = document.getElementById('splashScreen');
+                if (splash) {
+                    splash.style.opacity = '0';
+                    setTimeout(() => { splash.style.display = 'none'; }, 500);
+                }
+            }, 3000);
+        });
+    </script>
 
     <header>
         <div class="header-left">
@@ -42,7 +54,8 @@
                 <input type="file" id="fileInput" accept="audio/*" style="display: none;" onchange="handleImport(this.files)">
             </div>
             
-            <div id="libList" class="media-list"></div>
+            <div id="libList" class="media-list">
+                </div>
         </div>
 
         <div id="screen-studio" class="screen">
@@ -65,6 +78,7 @@
                     </div>
                 </div>
             </div>
+            
             <div class="player-bar">
                 <button class="btn-play" id="btnPlay" onclick="togglePlay()"><i class="fas fa-play"></i> Reproduzir</button>
                 <button class="btn-export" id="btnExport" onclick="exportTrack()"><i class="fas fa-download"></i> Exportar (.WAV)</button>
@@ -100,7 +114,7 @@
     <div id="renameModal" class="overlay">
         <div class="modal-box">
             <h3 style="margin-bottom: 15px;">Renomear Faixa</h3>
-            <input type="text" id="renameInput" class="modal-input">
+            <input type="text" id="renameInput" class="modal-input" placeholder="Novo nome da música...">
             <div class="modal-btns">
                 <button class="btn-cancel" onclick="document.getElementById('renameModal').style.display='none'">Cancelar</button>
                 <button class="btn-confirm" id="btnConfirmRename">Salvar</button>
