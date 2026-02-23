@@ -3,26 +3,33 @@ let currentTrackName = "";
 let soundTouchNode = null; 
 let isPlaying = false;
 let currentPitchRatio = 1.0;
+let myAudioCtx = null; // Inicia vazio para o navegador não travar a tela!
 
-// Cria um contexto de áudio totalmente independente (O Tone.js costuma causar conflitos)
-const myAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+// Função para ligar o motor APENAS quando necessário
+function getAudioContext() {
+    if (!myAudioCtx) {
+        myAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    return myAudioCtx;
+}
 
 async function loadAudioForStudio(item) {
     try {
         currentTrackName = item.name;
+        const ctx = getAudioContext(); // Acorda o motor aqui
         
         // Decodifica o áudio
         const arrayBuffer = await item.blob.arrayBuffer();
-        currentAudioBuffer = await myAudioCtx.decodeAudioData(arrayBuffer);
+        currentAudioBuffer = await ctx.decodeAudioData(arrayBuffer);
         
         document.getElementById('studioStatus').innerText = `Motor Ativo | Duração: ${Math.round(currentAudioBuffer.duration)}s`;
         
-        if (isPlaying) togglePlay(); // Pausa se tiver tocando algo anterior
+        if (isPlaying) togglePlay(); 
         setTone(0, document.querySelector('.t-btn.orig'));
         
     } catch (e) {
         console.error(e);
-        document.getElementById('studioStatus').innerText = "Erro ao carregar áudio. Arquivo corrompido?";
+        document.getElementById('studioStatus').innerText = "Erro ao carregar áudio. Arquivo incompatível?";
     }
 }
 
@@ -32,7 +39,7 @@ function setTone(semitones, btnElement) {
     document.querySelectorAll('.t-btn').forEach(b => b.classList.remove('active'));
     if (btnElement) btnElement.classList.add('active');
 
-    // 0 = 1.0 (Original) | Fórmula matemática avançada
+    // Transforma semitons na proporção matemática
     currentPitchRatio = Math.pow(2, semitones / 12);
     
     if (soundTouchNode && isPlaying) {
@@ -46,45 +53,41 @@ async function togglePlay() {
         return;
     }
 
-    // Se o navegador suspendeu o áudio (política de autoplay), a gente acorda ele
-    if (myAudioCtx.state === 'suspended') {
-        await myAudioCtx.resume();
+    const ctx = getAudioContext(); // Garante que o motor está rodando
+
+    if (ctx.state === 'suspended') {
+        await ctx.resume();
     }
 
     if (isPlaying) {
-        // PARAR A MÚSICA
+        // PAUSAR
         if (soundTouchNode) {
             soundTouchNode.disconnect();
             soundTouchNode = null;
         }
         isPlaying = false;
         
-        // Atualiza UI
         const btn = document.getElementById('btnPlay');
         btn.innerHTML = '<i class="fas fa-play"></i> Reproduzir';
         btn.style.background = "var(--text-main)";
         btn.style.color = "var(--bg-base)";
         
     } else {
-        // TOCAR A MÚSICA
+        // TOCAR
         try {
-            // Se SoundTouchJS não foi carregado pelo HTML, joga um erro
             const ShifterClass = window.PitchShifter || (window.SoundTouchJS ? window.SoundTouchJS.PitchShifter : null);
             
             if (!ShifterClass) {
-                alert("Erro crítico: Motor SoundTouchJS não encontrado.");
+                alert("Motor SoundTouchJS bloqueado. Verifique sua conexão ou desative o AdBlock.");
                 return;
             }
 
-            // Inicia o motor com buffer de 2048 (seguro para mobile, 16384 era o que travava)
-            soundTouchNode = new ShifterClass(myAudioCtx, currentAudioBuffer, 2048);
+            soundTouchNode = new ShifterClass(ctx, currentAudioBuffer, 2048);
             soundTouchNode.pitch = currentPitchRatio;
             
-            // Conecta à saída principal do celular/pc e começa
-            soundTouchNode.connect(myAudioCtx.destination);
+            soundTouchNode.connect(ctx.destination);
             isPlaying = true;
 
-            // Atualiza UI
             const btn = document.getElementById('btnPlay');
             btn.innerHTML = '<i class="fas fa-pause"></i> Pausar';
             btn.style.background = "#ff3b30";
@@ -92,11 +95,11 @@ async function togglePlay() {
 
         } catch (error) {
             console.error("Erro ao iniciar reprodução:", error);
-            alert("Ocorreu um erro ao processar o áudio. Tente recarregar a página.");
+            alert("Ocorreu um erro ao processar o áudio.");
         }
     }
 }
 
 function exportTrack() {
-    alert("Gravação em tempo real: Para salvar o arquivo com o timbre perfeito, por favor use um aplicativo de gravação de tela, ou conecte a saída de fone do celular diretamente na mesa de som!");
+    alert("Gravação direta em desenvolvimento. Conecte o cabo auxiliar direto na mesa de som ou grave a tela para capturar a qualidade máxima!");
 }
