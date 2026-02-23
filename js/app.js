@@ -2,6 +2,17 @@ let db;
 let library = [];
 let editingId = null;
 
+// 1. Splash Screen Logic (Agora visível por 3 segundos)
+document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => {
+        const splash = document.getElementById('splashScreen');
+        if(splash) {
+            splash.style.opacity = '0';
+            setTimeout(() => splash.style.display = 'none', 500);
+        }
+    }, 3000); // 3000 milissegundos = 3 segundos
+});
+
 // Inicializa o Banco de Dados
 const req = indexedDB.open("KMZ_VocalStudio_Pro", 1);
 req.onupgradeneeded = e => {
@@ -82,7 +93,6 @@ function renderLib() {
     });
 }
 
-// Funções da Biblioteca
 let previewPlayer = null;
 
 async function previewLibTrack(id, btn) {
