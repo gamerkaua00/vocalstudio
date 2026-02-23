@@ -2,18 +2,7 @@ let db;
 let library = [];
 let editingId = null;
 
-// 1. Splash Screen Logic (Agora visível por 3 segundos)
-document.addEventListener('DOMContentLoaded', () => {
-    setTimeout(() => {
-        const splash = document.getElementById('splashScreen');
-        if(splash) {
-            splash.style.opacity = '0';
-            setTimeout(() => splash.style.display = 'none', 500);
-        }
-    }, 3000); // 3000 milissegundos = 3 segundos
-});
-
-// Inicializa o Banco de Dados
+// Inicializa Banco de Dados
 const req = indexedDB.open("KMZ_VocalStudio_Pro", 1);
 req.onupgradeneeded = e => {
     db = e.target.result;
@@ -27,8 +16,12 @@ req.onsuccess = e => {
     document.getElementById('dbStatus').style.color = "var(--kmz-blue)";
     loadTracks();
 };
+req.onerror = () => {
+    document.getElementById('dbStatus').innerText = "Erro DB";
+    document.getElementById('dbStatus').style.color = "#ff1744";
+};
 
-// Navegação de Abas
+// Controle das Abas
 document.querySelectorAll('.tab-btn').forEach(tab => {
     tab.addEventListener('click', () => {
         document.querySelectorAll('.tab-btn').forEach(t => t.classList.remove('active'));
@@ -39,22 +32,26 @@ document.querySelectorAll('.tab-btn').forEach(tab => {
     });
 });
 
-// Importação e Banco de Dados
-async function handleImport(files) {
+// Importação (Exposta globalmente)
+window.handleImport = async function(files) {
     if (!files.length) return;
     const file = files[0];
     const name = file.name.replace(/\.[^/.]+$/, "");
+    
+    document.getElementById('dbStatus').innerText = "Salvando...";
     
     const tx = db.transaction(['tracks'], 'readwrite');
     tx.objectStore('tracks').add({ name: name, blob: file, date: Date.now() });
     
     tx.oncomplete = () => {
+        document.getElementById('dbStatus').innerText = "DB OK";
         loadTracks();
         document.getElementById('fileInput').value = ''; 
     };
-}
+};
 
 function loadTracks() {
+    if(!db) return;
     const tx = db.transaction(['tracks'], 'readonly');
     tx.objectStore('tracks').getAll().onsuccess = e => {
         library = e.target.result.reverse();
@@ -73,19 +70,17 @@ function renderLib() {
     library.forEach(item => {
         const div = document.createElement('div');
         div.className = 'media-item';
-        
         div.innerHTML = `
             <div class="media-title">${item.name}</div>
             <div class="media-date">${new Date(item.date).toLocaleDateString()}</div>
-            
             <div class="media-actions">
                 <div class="action-group">
-                    <button class="btn-icon" onclick="previewLibTrack(${item.id}, this)"><i class="fas fa-play"></i></button>
-                    <button class="btn-icon blue" onclick="sendToStudio(${item.id})"><i class="fas fa-sliders-h"></i> Estúdio</button>
+                    <button class="btn-icon" onclick="window.previewLibTrack(${item.id}, this)"><i class="fas fa-play"></i></button>
+                    <button class="btn-icon blue" onclick="window.sendToStudio(${item.id})"><i class="fas fa-sliders-h"></i> Estúdio</button>
                 </div>
                 <div class="action-group">
-                    <button class="btn-icon yellow" onclick="openRename(${item.id})"><i class="fas fa-pen"></i></button>
-                    <button class="btn-icon red" onclick="deleteTrack(${item.id})"><i class="fas fa-trash"></i></button>
+                    <button class="btn-icon yellow" onclick="window.openRename(${item.id})"><i class="fas fa-pen"></i></button>
+                    <button class="btn-icon red" onclick="window.deleteTrack(${item.id})"><i class="fas fa-trash"></i></button>
                 </div>
             </div>
         `;
@@ -93,9 +88,10 @@ function renderLib() {
     });
 }
 
+// Funções da Biblioteca (Expostas globalmente)
 let previewPlayer = null;
 
-async function previewLibTrack(id, btn) {
+window.previewLibTrack = async function(id, btn) {
     await Tone.start();
     const item = library.find(t => t.id === id);
     if (!item) return;
@@ -109,20 +105,26 @@ async function previewLibTrack(id, btn) {
     }
 
     btn.querySelector('i').className = 'fas fa-spinner fa-spin';
-    const buffer = await Tone.context.decodeAudioData(await item.blob.arrayBuffer());
-    
-    previewPlayer = new Tone.Player(buffer).toDestination();
-    previewPlayer.onstop = () => { btn.querySelector('i').className = 'fas fa-play'; };
-    previewPlayer.start();
-    btn.querySelector('i').className = 'fas fa-stop';
-}
+    try {
+        const buffer = await Tone.context.decodeAudioData(await item.blob.arrayBuffer());
+        previewPlayer = new Tone.Player(buffer).toDestination();
+        previewPlayer.onstop = () => { 
+            if(btn.querySelector('i')) btn.querySelector('i').className = 'fas fa-play'; 
+        };
+        previewPlayer.start();
+        btn.querySelector('i').className = 'fas fa-stop';
+    } catch (e) {
+        alert("Erro ao reproduzir preview.");
+        btn.querySelector('i').className = 'fas fa-play';
+    }
+};
 
-function openRename(id) {
+window.openRename = function(id) {
     editingId = id;
     const item = library.find(t => t.id === id);
     document.getElementById('renameInput').value = item.name;
     document.getElementById('renameModal').style.display = 'flex';
-}
+};
 
 document.getElementById('btnConfirmRename').onclick = () => {
     const newName = document.getElementById('renameInput').value;
@@ -139,22 +141,29 @@ document.getElementById('btnConfirmRename').onclick = () => {
     }
 };
 
-function deleteTrack(id) {
-    if (confirm("Tem certeza que deseja excluir este playback?")) {
+window.deleteTrack = function(id) {
+    if (confirm("Excluir definitivamente este playback?")) {
         const tx = db.transaction(['tracks'], 'readwrite');
         tx.objectStore('tracks').delete(id).onsuccess = () => loadTracks();
     }
-}
+};
 
-async function sendToStudio(id) {
+window.sendToStudio = async function(id) {
     const item = library.find(t => t.id === id);
     if (!item) return;
     
+    // Para o preview se estiver tocando
+    if (previewPlayer && previewPlayer.state === 'started') {
+        previewPlayer.stop();
+    }
+
     document.querySelector('[data-target="studio"]').click();
     document.getElementById('studioName').innerText = item.name;
-    document.getElementById('studioStatus').innerText = "Preparando motor SoundTouchJS...";
+    document.getElementById('studioStatus').innerText = "Carregando no motor de tons...";
     
-    if(typeof loadAudioForStudio === "function") {
-        await loadAudioForStudio(item);
+    if(typeof window.loadAudioForStudio === "function") {
+        await window.loadAudioForStudio(item);
+    } else {
+        alert("O motor de áudio ainda está carregando, tente novamente em alguns segundos.");
     }
-}
+};
