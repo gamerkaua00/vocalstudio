@@ -15,10 +15,8 @@ body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     background-color: var(--bg-base);
     color: var(--text-main);
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-    overflow: hidden;
+    display: flex; flex-direction: column;
+    height: 100vh; overflow: hidden;
 }
 
 header {
@@ -49,11 +47,11 @@ main { flex: 1; overflow-y: auto; padding: 20px; padding-bottom: 100px; }
 .btn-primary {
     width: 100%; background: var(--kmz-blue); color: white; border: none;
     padding: 14px; border-radius: 6px; font-size: 1rem; font-weight: 600;
-    cursor: pointer; transition: background 0.2s; display: flex; justify-content: center; gap: 10px;
+    cursor: pointer; transition: 0.2s; display: flex; justify-content: center; gap: 10px;
 }
 .btn-primary:hover { background: var(--kmz-blue-hover); }
 
-/* Grid de Tons */
+/* Controles de Tom */
 .tone-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 15px; }
 .t-btn {
     background: var(--bg-panel); border: 1px solid var(--border-color); color: var(--text-main);
@@ -62,13 +60,13 @@ main { flex: 1; overflow-y: auto; padding: 20px; padding-bottom: 100px; }
 .t-btn.orig { grid-column: span 3; font-weight: bold; background: #222; }
 .t-btn.active { background: var(--kmz-blue); border-color: var(--kmz-blue); font-weight: bold; }
 
-/* Player Bar */
+/* Player Fixado na Base */
 .player-bar {
     position: fixed; bottom: 0; left: 0; width: 100%; padding: 15px 20px;
     background: rgba(18, 18, 18, 0.95); backdrop-filter: blur(10px);
     border-top: 1px solid var(--border-color); display: flex; gap: 15px; z-index: 100;
 }
-.btn-play, .btn-export { flex: 1; padding: 15px; border-radius: 6px; border: none; font-weight: 600; font-size: 1rem; cursor: pointer; }
+.btn-play, .btn-export { flex: 1; padding: 15px; border-radius: 6px; border: none; font-weight: 600; font-size: 1rem; cursor: pointer; transition: 0.2s;}
 .btn-play { background: var(--text-main); color: var(--bg-base); }
 .btn-export { background: transparent; border: 1px solid var(--border-color); color: var(--text-main); }
 
@@ -85,7 +83,7 @@ main { flex: 1; overflow-y: auto; padding: 20px; padding-bottom: 100px; }
 .btn-icon.yellow { color: #ffab00; }
 .btn-icon.red { color: #ff1744; }
 
-/* Modal */
+/* Modal System */
 .overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 999; justify-content: center; align-items: center; }
 .modal-box { background: var(--bg-panel); padding: 20px; border-radius: 8px; border: 1px solid var(--border-color); width: 90%; max-width: 300px; }
 .modal-input { width: 100%; padding: 10px; margin-bottom: 15px; background: var(--bg-base); color: white; border: 1px solid var(--border-color); border-radius: 4px; }
